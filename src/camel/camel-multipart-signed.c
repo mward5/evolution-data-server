@@ -141,6 +141,158 @@ multipart_signed_skip_content (CamelMimeParser *cmp)
 	return 0;
 }
 
+/* Find the next "--boundary" or "\n--boundary" in the byte array from offset.
+ * Returns the offset of the start of the delimiter (first '-' of "--boundary"),
+ * or -1 if not found. *after_line is set to the offset immediately after the boundary line
+ * (after the final newline). If final_boundary is TRUE, looks for "--boundary--" only. */
+static goffset
+multipart_signed_find_boundary (const GByteArray *byte_array,
+                               const gchar *boundary,
+                               goffset from,
+                               goffset *after_line,
+                               gboolean final_boundary)
+{
+	const guint8 *data = byte_array->data;
+	gsize len = byte_array->len;
+	gchar *delim;
+	goffset pos;
+	goffset start;
+	gsize dlen;
+
+	if (final_boundary)
+		delim = g_strdup_printf ("--%s--", boundary);
+	else
+		delim = g_strdup_printf ("--%s", boundary);
+	dlen = strlen (delim);
+
+	for (pos = from; pos + (goffset) dlen <= (goffset) len; pos++) {
+		if (pos > from && data[pos - 1] != '\n' && data[pos - 1] != '\r')
+			continue;
+		if (memcmp (data + pos, delim, dlen) != 0)
+			continue;
+		start = pos;
+		pos += dlen;
+		if (pos < (goffset) len && data[pos] == '\r')
+			pos++;
+		if (pos < (goffset) len && data[pos] == '\n')
+			pos++;
+		*after_line = pos;
+		g_free (delim);
+		return start;
+	}
+	g_free (delim);
+	return -1;
+}
+
+/* Fallback when MIME parser fails: scan raw body for boundary and set part offsets.
+ * Used for triple-wrap (sign-encrypt-sign) and other multipart/signed that the
+ * parser does not handle. */
+static gint
+multipart_signed_parse_content_scan_boundary (CamelMultipartSigned *mps)
+{
+	CamelMultipart *mp = (CamelMultipart *) mps;
+	CamelDataWrapper *data_wrapper;
+	GByteArray *byte_array;
+	const gchar *boundary_raw;
+	gchar *boundary = NULL;
+	goffset b1_start, b1_after, b2_start, b2_after, end_start, end_after;
+
+	boundary_raw = camel_multipart_get_boundary (mp);
+	if (!boundary_raw || !*boundary_raw)
+		return -1;
+
+	/* Content-Type can have boundary="=-xxx"; param may return with or without quotes. */
+	if (boundary_raw[0] == '"') {
+		gsize len = strlen (boundary_raw);
+		if (len >= 2 && boundary_raw[len - 1] == '"')
+			boundary = g_strndup (boundary_raw + 1, len - 2);
+		else
+			boundary = g_strdup (boundary_raw + 1);
+	} else
+		boundary = g_strdup (boundary_raw);
+	if (!boundary || !*boundary) {
+		g_free (boundary);
+		return -1;
+	}
+
+	data_wrapper = CAMEL_DATA_WRAPPER (mps);
+	byte_array = camel_data_wrapper_get_byte_array (data_wrapper);
+	if (byte_array->len == 0) {
+		g_free (boundary);
+		return -1;
+	}
+
+	/* Body may be base64-encoded (e.g. when stored with Content-Transfer-Encoding: base64). */
+	{
+		gsize i;
+		gboolean looks_base64 = (byte_array->len >= 4);
+		if (looks_base64) {
+			for (i = 0; i < byte_array->len && looks_base64; i++) {
+				guint8 c = byte_array->data[i];
+				if (c != '\n' && c != '\r' && c != ' ' && c != '\t' &&
+				    !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+				      (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '='))
+					looks_base64 = FALSE;
+			}
+		}
+		if (looks_base64) {
+			gchar *nul = g_strndup ((const gchar *) byte_array->data, byte_array->len);
+			gsize decoded_len = 0;
+			guint8 *decoded = (guint8 *) g_base64_decode (nul, &decoded_len);
+			g_free (nul);
+			if (decoded != NULL && decoded_len > 0 &&
+			    (decoded[0] == '\n' || decoded[0] == '\r' || decoded[0] == '-')) {
+				g_byte_array_set_size (byte_array, 0);
+				g_byte_array_append (byte_array, decoded, decoded_len);
+				g_free (decoded);
+			} else if (decoded != NULL)
+				g_free (decoded);
+		}
+	}
+
+	/* First delimiter: optional leading newline then --boundary\n */
+	b1_start = multipart_signed_find_boundary (byte_array, boundary, 0, &b1_after, FALSE);
+	if (b1_start == -1) {
+		g_free (boundary);
+		return -1;
+	}
+
+	/* Second delimiter: \n--boundary\n (start of signature part) */
+	b2_start = multipart_signed_find_boundary (byte_array, boundary, b1_after, &b2_after, FALSE);
+	if (b2_start == -1) {
+		g_warning ("multipart_signed_parse_content_scan_boundary: second boundary not found");
+		g_free (boundary);
+		return -1;
+	}
+
+	/* Closing delimiter: \n--boundary-- */
+	end_start = multipart_signed_find_boundary (byte_array, boundary, b2_after, &end_after, TRUE);
+	if (end_start == -1) {
+		g_warning ("multipart_signed_parse_content_scan_boundary: closing boundary not found");
+		g_free (boundary);
+		return -1;
+	}
+	g_free (boundary);
+
+	/* Part 1 (content) is from b1_after to b2_start (exclude trailing CR/LF of part 1 body) */
+	mps->priv->start1 = b1_after;
+	mps->priv->end1 = b2_start;
+	if (mps->priv->end1 > mps->priv->start1 && byte_array->data[mps->priv->end1 - 1] == '\n')
+		mps->priv->end1--;
+	if (mps->priv->end1 > mps->priv->start1 && byte_array->data[mps->priv->end1 - 1] == '\r')
+		mps->priv->end1--;
+
+	/* Part 2 (signature) is from b2_after to end_start */
+	mps->priv->start2 = b2_after;
+	mps->priv->end2 = end_start;
+	if (mps->priv->end2 > mps->priv->start2 && byte_array->data[mps->priv->end2 - 1] == '\n')
+		mps->priv->end2--;
+	if (mps->priv->end2 > mps->priv->start2 && byte_array->data[mps->priv->end2 - 1] == '\r')
+		mps->priv->end2--;
+
+	return 0;
+}
+
 static gint
 multipart_signed_parse_content (CamelMultipartSigned *mps)
 {
@@ -212,6 +364,12 @@ multipart_signed_parse_content (CamelMultipartSigned *mps)
 	if (mps->priv->end2 == -1 || mps->priv->start2 == -1) {
 		if (mps->priv->end1 == -1)
 			mps->priv->start1 = -1;
+
+		/* Fallback: scan raw body for boundary (e.g. triple-wrap / nested pkcs7-mime). */
+		if (byte_array->len == 0)
+			g_warning ("multipart_signed_parse_content: parser failed and body length 0, cannot use fallback");
+		else if (multipart_signed_parse_content_scan_boundary (mps) == 0)
+			return 0;
 
 		return -1;
 	}
