@@ -260,7 +260,7 @@ multipart_signed_parse_content_scan_boundary (CamelMultipartSigned *mps)
 	/* Second delimiter: \n--boundary\n (start of signature part) */
 	b2_start = multipart_signed_find_boundary (byte_array, boundary, b1_after, &b2_after, FALSE);
 	if (b2_start == -1) {
-		g_warning ("multipart_signed_parse_content_scan_boundary: second boundary not found");
+		g_debug ("multipart_signed_parse_content_scan_boundary: second boundary not found");
 		g_free (boundary);
 		return -1;
 	}
@@ -268,7 +268,7 @@ multipart_signed_parse_content_scan_boundary (CamelMultipartSigned *mps)
 	/* Closing delimiter: \n--boundary-- */
 	end_start = multipart_signed_find_boundary (byte_array, boundary, b2_after, &end_after, TRUE);
 	if (end_start == -1) {
-		g_warning ("multipart_signed_parse_content_scan_boundary: closing boundary not found");
+		g_debug ("multipart_signed_parse_content_scan_boundary: closing boundary not found");
 		g_free (boundary);
 		return -1;
 	}
@@ -367,7 +367,7 @@ multipart_signed_parse_content (CamelMultipartSigned *mps)
 
 		/* Fallback: scan raw body for boundary (e.g. triple-wrap / nested pkcs7-mime). */
 		if (byte_array->len == 0)
-			g_warning ("multipart_signed_parse_content: parser failed and body length 0, cannot use fallback");
+			g_debug ("multipart_signed_parse_content: parser failed and body length 0, cannot use fallback");
 		else if (multipart_signed_parse_content_scan_boundary (mps) == 0)
 			return 0;
 
@@ -492,7 +492,7 @@ multipart_signed_write_to_stream_sync (CamelDataWrapper *data_wrapper,
 		return -1;
 	total += count;
 
-	/* write the terminating boudary delimiter */
+	/* write the terminating boundary delimiter */
 	content = g_strdup_printf ("\n--%s--\n", boundary);
 	count = camel_stream_write_string (
 		stream, content, cancellable, error);
@@ -657,7 +657,7 @@ multipart_signed_write_to_output_stream_sync (CamelDataWrapper *data_wrapper,
 		return -1;
 	total += result;
 
-	/* write the terminating boudary delimiter */
+	/* write the terminating boundary delimiter */
 	content = g_strdup_printf ("\n--%s--\n", boundary);
 	success = g_output_stream_write_all (
 		output_stream,
