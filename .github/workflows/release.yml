@@ -1,0 +1,131 @@
+name: Build release packages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish as (defaults to the pushed tag)'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    container: ubuntu:devel
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: debian-packaging
+
+      - name: Install build tooling and Build-Depends
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends dpkg-dev build-essential fakeroot equivs devscripts
+          apt-get build-dep -y .
+
+      - name: Build .deb
+        run: dpkg-buildpackage -us -uc -b
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          mv ../*.deb dist/
+          ls -l dist
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*.deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-packages
+          path: dist/*.deb
+
+  build-rpm:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fedora-packaging
+
+      - name: Install build tooling and BuildRequires
+        run: |
+          dnf install -y rpm-build rpmdevtools 'dnf-command(builddep)' curl
+          rpmdev-setuptree
+          dnf builddep -y ./evolution-data-server.spec
+
+      - name: Fetch upstream source tarball
+        run: |
+          NAME=$(awk -F': *' '/^Name:/{print $2; exit}' evolution-data-server.spec)
+          VERSION=$(awk -F': *' '/^Version:/{print $2; exit}' evolution-data-server.spec)
+          MAJMIN=$(echo "$VERSION" | cut -d. -f1,2)
+          curl -fL -o "$HOME/rpmbuild/SOURCES/${NAME}-${VERSION}.tar.xz" \
+            "https://download.gnome.org/sources/${NAME}/${MAJMIN}/${NAME}-${VERSION}.tar.xz"
+
+      - name: Stage patches and spec
+        run: |
+          cp -v *.patch "$HOME/rpmbuild/SOURCES/" 2>/dev/null || true
+          cp -v evolution-data-server.spec "$HOME/rpmbuild/SPECS/"
+
+      - name: Build .rpm
+        run: rpmbuild --define "_topdir $HOME/rpmbuild" -bb "$HOME/rpmbuild/SPECS/evolution-data-server.spec"
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          find "$HOME/rpmbuild/RPMS" -name '*.rpm' -exec cp -v {} dist/ \;
+          ls -l dist
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*.rpm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm-packages
+          path: dist/*.rpm
+
+  publish-release:
+    needs: [build-deb, build-rpm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Determine tag
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l dist
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --title "$TAG" \
+            --generate-notes \
+            dist/*.deb dist/*.rpm
