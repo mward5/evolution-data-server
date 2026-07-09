@@ -20,11 +20,12 @@ for the full design rationale, threat model, and RFC references
 
 - **`master`** — unmodified mirror of upstream GNOME `master`. Not touched;
   kept for diffing/rebasing against upstream.
-- **`triple-wrap-3.60.2`** *(this branch)* — upstream tag `3.60.2` plus two
+- **`triple-wrap`** *(this branch)* — upstream tag `3.60.2` plus two
   commits adding a fallback boundary scanner to
   `camel-multipart-signed.c`. This is the branch a future GNOME merge
-  request would be built from.
-- **`debian-packaging`** — `triple-wrap-3.60.2` plus a Debian source package
+  request would be built from. Rebased onto newer upstream tags in place
+  as they're adopted, rather than renamed per version.
+- **`debian-packaging`** — `triple-wrap` plus a Debian source package
   (`debian/`, format `3.0 (quilt)`) that applies the same change via
   `debian/patches/0006`–`0007`. Builds with `dpkg-buildpackage` /
   `gbp buildpackage`.
@@ -52,8 +53,8 @@ Two commits on top of upstream `3.60.2`, both in
 ## Building
 
 ```sh
-git clone -b triple-wrap-3.60.2 https://github.com/mward5/evolution-data-server.git
-git clone -b triple-wrap-3.60.2 https://github.com/mward5/evolution.git
+git clone -b triple-wrap https://github.com/mward5/evolution-data-server.git
+git clone -b triple-wrap https://github.com/mward5/evolution.git
 # build/install this repo first, then evolution against it, per the
 # normal Evolution-Data-Server CMake build.
 ```
