@@ -151,22 +151,21 @@ multipart_signed_skip_content (CamelMimeParser *cmp)
 	return 0;
 }
 
-/* Find the next "--boundary" or "\n--boundary" in the byte array from offset.
- * Returns the offset of the start of the delimiter (first '-' of "--boundary"),
- * or -1 if not found. *after_line is set to the offset immediately after the boundary line
- * (after the final newline). If final_boundary is TRUE, looks for "--boundary--" only. */
+/* Find the next boundary delimiter line at or after @from, that is "--boundary",
+ * or "--boundary--" when @final_boundary is TRUE. Returns the offset of its
+ * first '-', or -1 when there is none. The @after_line is set to the offset
+ * just past the end of the delimiter line. */
 static goffset
 multipart_signed_find_boundary (const GByteArray *byte_array,
-                               const gchar *boundary,
-                               goffset from,
-                               goffset *after_line,
-                               gboolean final_boundary)
+                                const gchar *boundary,
+                                goffset from,
+                                goffset *after_line,
+                                gboolean final_boundary)
 {
 	const guint8 *data = byte_array->data;
 	gsize len = byte_array->len;
 	gchar *delim;
 	goffset pos;
-	goffset start;
 	gsize dlen;
 
 	if (final_boundary)
@@ -176,21 +175,36 @@ multipart_signed_find_boundary (const GByteArray *byte_array,
 	dlen = strlen (delim);
 
 	for (pos = from; pos + (goffset) dlen <= (goffset) len; pos++) {
+		goffset after;
+
 		if (pos > from && data[pos - 1] != '\n' && data[pos - 1] != '\r')
 			continue;
 		if (memcmp (data + pos, delim, dlen) != 0)
 			continue;
-		start = pos;
-		pos += dlen;
-		if (pos < (goffset) len && data[pos] == '\r')
-			pos++;
-		if (pos < (goffset) len && data[pos] == '\n')
-			pos++;
-		*after_line = pos;
+
+		/* The delimiter can be followed only by transport padding and the
+		 * end of the line (RFC 2046, Section 5.1.1), otherwise this is a
+		 * longer boundary which merely starts the same way, or, when not
+		 * looking for the final one, the closing delimiter. */
+		after = pos + dlen;
+		while (after < (goffset) len && (data[after] == ' ' || data[after] == '\t'))
+			after++;
+		if (after < (goffset) len && data[after] != '\r' && data[after] != '\n')
+			continue;
+
+		if (after < (goffset) len && data[after] == '\r')
+			after++;
+		if (after < (goffset) len && data[after] == '\n')
+			after++;
+
+		*after_line = after;
 		g_free (delim);
-		return start;
+
+		return pos;
 	}
+
 	g_free (delim);
+
 	return -1;
 }
 
