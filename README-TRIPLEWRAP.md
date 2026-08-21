@@ -6,9 +6,10 @@ carrying the Camel-side changes for S/MIME triple-wrapping (sign → encrypt →
 outer sign), companion to the composer change in
 [`mward5/evolution`](https://github.com/mward5/evolution).
 
-**Status:** builds and runs; the camel tests pass and the generated messages
-have been verified structurally and cryptographically, but **not** yet confirmed
-end-to-end through a mail security gateway. Not submitted upstream.
+**Status:** working. The camel tests pass, the generated messages have been
+verified structurally and cryptographically, and a message from this build was
+rendered correctly, with no attachment, by a recipient behind a mail security
+gateway. Not submitted upstream.
 
 See [`docs/SMIME-Triple-Wrap-Design.md`](docs/SMIME-Triple-Wrap-Design.md) for
 the design, the signature scopes, and the list of RFC 2634 features this does

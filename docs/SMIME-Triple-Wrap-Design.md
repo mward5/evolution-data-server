@@ -212,10 +212,15 @@ with the layout, and no such client has been found. An account-wide switch
 would in any case be poor insurance, since the sender cannot know which
 recipients are affected until after the mail has gone.
 
+A message from this build was then sent to a recipient behind the gateway
+described in §2. It was displayed with its body intact and no attachment,
+which is the behaviour the two-layer form does not get. The reply came back
+through the same gateway and is itself triple-wrapped.
+
 Not established:
 
-- That any particular gateway renders the result. The structural match is
-  evidence, not proof, and the mechanism remains unknown.
+- *Why* the gateway treats the two layouts differently. The outcome is now
+  known; the mechanism still is not.
 - Whether the clients above report the *validity* of the two signatures
   correctly. None of them warned about a bad signature, which argues against
   their rejecting it, but the security indicators were not examined
