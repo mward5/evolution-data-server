@@ -1,373 +1,216 @@
-# S/MIME Triple-Wrap Design for Evolution / Evolution-Data-Server
+# S/MIME Triple-Wrap in Evolution / Evolution-Data-Server
 
-## 1. Scope and goals
+## 1. Scope
 
-This document explains how Evolution and Evolution-Data-Server (EDS) currently implement S/MIME, and how the proposed Triple-Wrap (RFC 2634 + RFC 5035) changes fit into that design.
+This document describes the S/MIME triple-wrapping (sign → encrypt → sign)
+support added to the Evolution composer and to Camel, why it exists, and —
+importantly — which parts of RFC 2634 it does **not** implement.
 
-It is written to:
-- Help reason about security properties and threat models.
-- Provide a defensible design narrative for maintainers and reviewers.
-- Serve as a map back to specific source files and functions.
+It covers the send path in Evolution and one receive-side parsing fix in Camel.
+It is not an S/MIME tutorial.
 
-This is **not** a full S/MIME tutorial; it focuses on:
-- The **send** path for S/MIME sign / encrypt, and
-- The additional logic required to produce **Gmail/Broadcom-compatible triple-wrapped** messages.
+References:
 
-Key references:
-- Project context: `SMIME_Implementation_Context.md`
-- RFC 2634: Enhanced Security Services for S/MIME (triple wrapping)
-- RFC 5035: ESS update, SigningCertificateV2 / ESSCertIDv2 (SHA-256)
-- EID 6562: Clarification on first certificate in signing-certificate attributes
+- RFC 5652 — Cryptographic Message Syntax
+- RFC 8551 — S/MIME 4.0 Message Specification
+- RFC 2634 — Enhanced Security Services for S/MIME (triple wrapping is §1.1)
+- RFC 2045 §6.4 — transfer encodings permitted on `multipart` entities
+- RFC 2046 §5.1.1 — boundary delimiter syntax
 
 ---
 
-## 2. Architecture overview
+## 2. Problem
 
-### 2.1 Evolution vs Evolution-Data-Server roles
+Evolution's sign+encrypt produces a two-layer message: an opaque `signed-data`
+wrapped in `enveloped-data`, with `application/pkcs7-mime` at the top level.
+There is no signature over the encrypted body.
 
-**Evolution (UI / composer)**
+Some mail security gateways will not process such a message. The observed
+symptom is not a bounce or a rejection: the message is delivered, but the
+recipient sees an empty body with an `smime.p7m` attachment. Messages arriving
+*from* those gateways are triple-wrapped, with an outer `multipart/signed` over
+the `enveloped-data` part.
 
-- Handles user interaction and message composition.
-- Decides **whether** to sign and/or encrypt.
-- Assembles a MIME tree (`CamelMimePart` hierarchy) for the outgoing message.
-- For S/MIME, delegates cryptographic operations (sign / encrypt / decrypt / verify) to Camel in EDS.
-
-Relevant file:
-- `evolution/src/composer/e-msg-composer.c`
-  - `composer_build_message_smime()`: attaches S/MIME signing and encryption to the composed message.
-
-**Evolution-Data-Server (Camel + NSS)**
-
-- Implements the mail engine and S/MIME plumbing.
-- Exposes abstract crypto APIs via `CamelCipherContext`:
-  - `camel_cipher_context_sign_sync()`
-  - `camel_cipher_context_encrypt_sync()`
-  - `camel_cipher_context_decrypt_sync()`
-  - `camel_cipher_context_verify_sync()`
-- Provides an S/MIME implementation (`CamelSMIMEContext`) backed by **NSS** (Network Security Services).
-
-Relevant files:
-- `evolution-data-server/src/camel/camel-cipher-context.[ch]`
-- `evolution-data-server/src/camel/camel-smime-context.[ch]`
-
-**NSS (Crypto / CMS layer)**
-
-- Handles CMS/PKCS#7 structures, certificate / key operations, and crypto primitives.
-- EDS uses NSS APIs such as:
-  - `NSS_CMSMessage_Create`
-  - `NSS_CMSSignedData_Create`
-  - `NSS_CMSEnvelopedData_Create`
-  - `NSS_CMSSignerInfo_Create` and attribute helpers.
+The mechanism behind that difference is not documented here, because it has not
+been established. What has been established is the wire format such gateways
+themselves emit, and this change makes Evolution produce the same shape.
 
 ---
 
-## 3. Current S/MIME send behaviour (pre-Triple-Wrap)
+## 3. Architecture
 
-This section describes how Evolution+EDS behave **before** adding Triple-Wrap.
+**Evolution (composer)** decides whether to sign and/or encrypt, assembles the
+MIME tree, and delegates crypto to Camel.
 
-### 3.1 High-level flows
+- `src/composer/e-msg-composer.c` — `composer_build_message_smime()`
 
-**Sign-only (S/MIME)**
+**Evolution-Data-Server (Camel)** implements the S/MIME operations over NSS.
 
-1. Composer builds a MIME tree for the message body.
-2. `composer_build_message_smime()` sees `context->smime_sign == TRUE`, `context->smime_encrypt == FALSE`.
-3. It creates a `CamelSMIMEContext` and calls:
-   - `camel_cipher_context_sign_sync()`
-4. Inside Camel:
-   - `camel_cipher_context_sign_sync()` dispatches to `smime_context_sign_sync()` in `camel-smime-context.c`.
-   - `smime_context_sign_sync()` calls `sm_signing_cmsmessage()` to build an NSS `NSSCMSSignedData`.
-5. Depending on `CamelSMIMEContextPrivate::sign_mode`:
-   - **CLEARSIGN** (`CAMEL_SMIME_SIGN_CLEARSIGN`):
-     - Output is `multipart/signed`:
-       - First part: original MIME content.
-       - Second part: `application/pkcs7-signature` containing CMS `signedData`.
-   - **ENVELOPED SIGN** (`CAMEL_SMIME_SIGN_ENVELOPED`):
-     - Output is opaque: `application/pkcs7-mime; smime-type=signed-data`.
-
-**Encrypt-only (S/MIME)**
-
-1. Composer sets `context->smime_encrypt == TRUE`, `context->smime_sign == FALSE`.
-2. It creates a `CamelSMIMEContext` and calls:
-   - `camel_cipher_context_encrypt_sync()`
-3. `smime_context_encrypt_sync()`:
-   - Resolves recipient certificates (using Camel session + NSS).
-   - Builds `NSSCMSEnvelopedData` over the canonicalized message content.
-   - Encodes to `application/pkcs7-mime; smime-type=enveloped-data` with filename `smime.p7m`.
-
-**Sign + Encrypt (S/MIME)**
-
-Today, the implementation effectively does:
-
-1. **Sign once**, usually using `CAMEL_SMIME_SIGN_ENVELOPED` (opaque signed-data):
-   - Output: `application/pkcs7-mime; smime-type=signed-data`.
-2. **Encrypt that result**:
-   - Input: opaque signed-data part.
-   - Output: `application/pkcs7-mime; smime-type=enveloped-data` (final message).
-
-This is a **Sign-then-Encrypt** layout, but **only two layers**:
-- There is **no outer signature** over the encrypted blob.
-
-### 3.2 Key data structures and functions
-
-**In Evolution**
-
-- `e-msg-composer.c`:
-  - `composer_build_message_smime(AsyncContext *context, GCancellable *cancellable, GError **error)`:
-    - Queries account's S/MIME settings (`ESourceSMIME`).
-    - Determines `signing_certificate`, `encryption_certificate`, `signing_algorithm`.
-    - Sets up `CamelSMIMEContext`:
-      - `camel_smime_context_set_sign_mode()`:
-        - For sign+encrypt, it uses `CAMEL_SMIME_SIGN_ENVELOPED` (opaque signed-data).
-      - `camel_smime_context_set_encrypt_key()`:
-        - Configures recipient/encrypt-to-self options.
-    - Calls:
-      - `camel_cipher_context_sign_sync()` (if signing).
-      - `camel_cipher_context_encrypt_sync()` (if encrypting).
-
-**In Evolution-Data-Server (Camel S/MIME)**
-
-- `camel-smime-context.c`:
-  - `sm_signing_cmsmessage()`:
-    - Takes `CamelSMIMEContext *context`, signer nickname (`nick`), hash algorithm (`SECOidTag *hash`), and a `detached` flag.
-    - Uses NSS to:
-      - Find the signer certificate (`CERT_FindUserCertByUsage`).
-      - Select hash algorithm (defaulted from `cert->signature` if caller passed `SEC_OID_UNKNOWN`).
-      - Create `NSSCMSMessage` and `NSSCMSSignedData`.
-      - Set `contentInfo` to `id-data` (with or without detached content).
-      - Create `NSSCMSSignerInfo`, attach cert chain and `signingTime` attribute.
-    - Returns a fully-built `NSSCMSMessage *` for signing.
-  - `smime_context_sign_sync()`:
-    - Canonicalizes the input MIME part (line endings, From-escaping).
-    - Feeds that into an NSS CMS encoder (`NSS_CMSEncoder_Start/Update/Finish`).
-    - Wraps the encoder output in a `CamelDataWrapper`.
-    - If `sign_mode == CLEARSIGN`, builds `multipart/signed` with:
-      - `micalg` derived from hash (`sha1`, `sha-256`, etc.).
-      - `protocol` equal to the S/MIME signature protocol (PKCS#7).
-    - Otherwise, outputs opaque `application/pkcs7-mime; smime-type=signed-data`.
-  - `smime_context_encrypt_sync()`:
-    - Resolves recipient certificates.
-    - Calls `NSS_CMSMessage_Create`, `NSS_CMSEnvelopedData_Create`, `NSS_CMSContentInfo_SetContent_Data`.
-    - Generates a bulk key and encrypts the canonicalized content.
-    - Outputs `application/pkcs7-mime; smime-type=enveloped-data`.
+- `src/camel/camel-cipher-context.[ch]` — abstract sign/encrypt/verify/decrypt
+- `src/camel/camel-smime-context.c` — NSS-backed S/MIME implementation
+- `src/camel/camel-multipart-signed.c` — `multipart/signed` parsing
 
 ---
 
-## 4. Triple-Wrap requirements (RFC 2634 / RFC 5035)
+## 4. What the composer produces
 
-### 4.1 RFC 2634 triple-wrap structure
+For a message that is both signed and encrypted:
 
-RFC 2634 defines **triple wrapping** as: **sign → encrypt → sign again**.
+```
+multipart/signed; protocol="application/pkcs7-signature"; micalg="sha-256"
+├── application/pkcs7-mime; smime-type="enveloped-data"   (base64)
+│     └── [encrypted] application/pkcs7-mime; smime-type="signed-data"
+│           └── [signed] the original body part
+└── application/pkcs7-signature; name="smime.p7s"          (base64)
+```
 
-Steps (simplified):
+Three passes, in `composer_build_message_smime()`:
 
-1. Start with the original content + inner MIME headers.
-2. **Inner sign**:
-   - Create CMS `signedData` over the inner content.
-   - Represent it either as `multipart/signed` or `application/pkcs7-mime; smime-type=signed-data`.
-3. **Encrypt**:
-   - Encrypt the entire result of step 2 as `application/pkcs7-mime; smime-type=enveloped-data`.
-4. **Outer sign**:
-   - Sign the result of step 3 **including its MIME headers**.
-   - Produce an outer `multipart/signed` or `application/pkcs7-mime` (outer signature).
-   - The **outer signature** binds attributes (e.g., security labels, policy info) to the **encrypted body**, and is what intermediate agents can see/act on.
+1. **Inner sign** — `CAMEL_SMIME_SIGN_ENVELOPED`, over the composed body part.
+   Produces opaque `signed-data`.
+2. **Encrypt** — over the result of step 1, including its `Content-*` headers.
+   Produces `enveloped-data`.
+3. **Outer sign** — `CAMEL_SMIME_SIGN_CLEARSIGN` with SHA-256, over the
+   `enveloped-data` **body part**: its `Content-*` headers and its body, and
+   nothing else. Produces the outer `multipart/signed`.
 
-For **our Gmail/Broadcom use-case**, the target is:
+### 4.1 Signature scopes
 
-- Outer layer: `multipart/signed; protocol="application/pkcs7-signature"; micalg="sha-256"`.
-- Middle: `application/pkcs7-mime; smime-type=enveloped-data` (encrypted inner structure).
-- Inner: original signed content (signed-data, possibly in opaque form).
+The two signatures cover different data by design, and neither covers the
+message's RFC822 headers:
 
-### 4.2 RFC 5035 and SHA-256
+| Signature | Covers |
+| --- | --- |
+| Inner | `Content-Type`, `Content-Transfer-Encoding`, and the original body |
+| Outer | the `Content-*` headers of the `enveloped-data` part, and its base64 body |
 
-RFC 5035 updates ESS to make the **"signing certificate"** attribute algorithm-agile:
+Step 3 must be given a body part, not the `CamelMimeMessage`. Camel signs a MIME
+entity by serialising it — headers, blank line, body — through
+`camel_cipher_canonical_to_stream()`. Since `CamelMimeMessage` derives from
+`CamelMimePart`, passing the message compiles and runs, but serialises every
+RFC822 header into the signed bytes, including the internal `X-Evolution-*`
+headers that are otherwise stripped before sending. The composer therefore
+copies the encrypted content and its `Content-*` headers onto a fresh
+`CamelMimePart` and signs that.
 
-- Original ESS used **ESSCertID** hard-wired to **SHA-1**.
-- RFC 5035 introduces:
-  - **ESSCertIDv2**
-  - **SigningCertificateV2** attribute
-- Hash algorithm:
-  - For SHA-1, `SigningCertificate` is used.
-  - For SHA-256 and others, `SigningCertificateV2` with `ESSCertIDv2` is required.
+### 4.2 Headers on the root part
 
-For compatibility with modern Gmail/Broadcom deployments:
+After the encrypt step the message carries `Content-Disposition`,
+`Content-Description` and `Content-Transfer-Encoding: base64` describing the
+`enveloped-data` part. Once that part is nested inside the outer
+`multipart/signed`, they describe the wrong entity and are removed. The encoding
+header matters most: a `multipart` body may not be base64-encoded (RFC 2045
+§6.4), so leaving it would make the message malformed.
 
-- The **outer signature** should:
-  - Use **SHA-256** as the digest algorithm.
-  - Include a **SigningCertificateV2** attribute referring to the signer's certificate via SHA-256 hash.
-  - Ensure the signer's cert is the **first** entry in the sequence (per EID 6562).
-
-Exactly how much of this NSS does automatically vs. requires manual attribute construction is an implementation detail, but the design goal is clear: **outer signature must be clearly, unambiguously tied to the signer's cert using SHA-256**.
-
----
-
-## 5. Proposed Triple-Wrap design
-
-### 5.1 Goals and non-goals
-
-**Goals**
-
-- For outgoing S/MIME messages that are both **signed and encrypted**, produce a **triple-wrapped** structure as per RFC 2634, such that:
-  - Gmail/Broadcom can **verify the outer signature** and
-  - **decrypt** the inner envelope to display the plaintext inline (no unusable `smime.p7m` attachment).
-- Use **SHA-256** for the outer signature and expose a SigningCertificateV2 / ESSCertIDv2 structure consistent with RFC 5035.
-- Minimize API surface changes:
-  - Prefer using existing `CamelCipherContext` APIs, and localizing Triple-Wrap orchestration in the Evolution composer.
-
-**Non-goals (initial phase)**
-
-- Fully re-architecting the S/MIME/NSS integration.
-- Changing how sign-only or encrypt-only modes behave.
-- Comprehensive receive-side refactor (beyond ensuring basic compatibility with triple-wrapped messages).
-
-### 5.2 Send path changes (high-level)
-
-For messages where the user selects **both** S/MIME sign and S/MIME encrypt:
-
-1. **Inner sign (existing behaviour)**  
-   - `composer_build_message_smime()`:
-     - Creates `CamelSMIMEContext` A.
-     - Sets `sign_mode = CAMEL_SMIME_SIGN_ENVELOPED` (opaque `signed-data`).
-     - Calls `camel_cipher_context_sign_sync()` on the original MIME tree.
-   - Output: `application/pkcs7-mime; smime-type=signed-data` (inner signature).
-
-2. **Encrypt (existing behaviour)**  
-   - Same function uses `CamelSMIMEContext` B (or reuses the context as appropriate).
-   - Calls `camel_cipher_context_encrypt_sync()` with recipients.
-   - Output: `application/pkcs7-mime; smime-type=enveloped-data` (encrypted blob).
-
-3. **Outer sign (new Triple-Wrap step)**  
-   - Create `CamelSMIMEContext` C for the **outer signature**.
-   - Configure C:
-     - `sign_mode = CAMEL_SMIME_SIGN_CLEARSIGN` so the result is `multipart/signed`.
-     - Digest algorithm: **explicitly set to SHA-256**.
-   - Treat the encrypted MIME part (`application/pkcs7-mime; smime-type=enveloped-data`) plus its headers as the sign input.
-   - Call `camel_cipher_context_sign_sync()` to produce:
-     - A `multipart/signed` outer structure:
-       - Part 1: the encrypted body (unchanged).
-       - Part 2: `application/pkcs7-signature` outer signature with `micalg=sha-256`.
-   - Replace the message's top-level content with this outer `multipart/signed` part.
-
-Resulting structure:
-
-- `multipart/signed; protocol="application/pkcs7-signature"; micalg="sha-256"`
-  - Part 1: `application/pkcs7-mime; smime-type=enveloped-data` (encrypted inner signed content)
-  - Part 2: `application/pkcs7-signature` (outer CMS signedData over Part 1)
-
-### 5.3 Where the logic lives
-
-**Evolution (composer)**
-
-- Orchestration of the three passes lives in `composer_build_message_smime()`:
-  - This function already has access to:
-    - S/MIME account settings (`ESourceSMIME`).
-    - The intermediate `CamelMimePart` tree (`context->top_level_part` and `context->message`).
-  - It is the natural place to:
-    - Decide "Triple-Wrap or not" (only when both sign and encrypt are selected).
-    - Invoke sign → encrypt → outer sign in sequence.
-
-**Evolution-Data-Server (Camel)**
-
-- No new public API is strictly required:
-  - `CamelCipherContext` already supports:
-    - Clearsign S/MIME (`multipart/signed`).
-    - Opaque signed-data (`application/pkcs7-mime; smime-type=signed-data`).
-    - Enveloped-data encryption (`application/pkcs7-mime; smime-type=enveloped-data`).
-- Possible localized Camel changes:
-  - Ensure that when **SHA-256** is used:
-    - The `micalg` parameter for `multipart/signed` is exactly what broad clients expect (e.g., `sha-256`).
-  - Confirm or extend NSS integration so:
-    - `SigningCertificateV2` / `ESSCertIDv2` is present for SHA-256 signatures.
-    - The signer's cert is first in the ESSCertIDv2 sequence (per EID 6562).
-- **Implementation note:** The initial Triple-Wrap implementation uses NSS as-is for the outer signature (SHA-256 digest, multipart/signed, micalg=sha-256). NSS may add signing-certificate attributes internally. If Gmail/Broadcom still reject messages in testing, add an explicit SigningCertificateV2 attribute in `sm_signing_cmsmessage()` (e.g. via NSS API if available, or by encoding the RFC 5035 attribute).
+The header is removed rather than reset to `7bit`, because
+`camel_mime_part_set_encoding()` writes an *empty* header for the default
+encoding, and because messages arriving from a gateway carry no encoding header
+on the outer multipart at all.
 
 ---
 
-## 6. Security considerations
+## 5. What is *not* implemented
 
-### 6.1 Why Triple-Wrap improves security (and Gmail compatibility)
+RFC 2634 is *Enhanced Security Services*. Triple wrapping is one section of it;
+most of the document defines CMS attributes. **None of those attributes are
+implemented here.**
 
-The main issues with the existing **Sign-then-Encrypt** (two-layer) approach are:
+| RFC 2634 | Status |
+| --- | --- |
+| §1.1 triple wrapping structure | implemented |
+| §2 receipt request | not implemented |
+| §3 ESS security label | not implemented |
+| §5 signing-certificate attribute | not implemented |
+| RFC 5035 `SigningCertificateV2` / `ESSCertIDv2` | not implemented |
 
-- The **inner signature** is over **plaintext**, but:
-  - After encryption, intermediate agents—and Gmail's Efail mitigation—only see the **encrypted blob**.
-  - They cannot tell whether the blob is unchanged or whether an attacker tampered with envelope headers or structure.
-- Some clients (including Gmail/Broadcom in your testing context) require an **outer cryptographic seal**:
-  - The outer signature must be over the **encrypted body** itself.
-  - This allows them to:
-    - Validate integrity of the encrypted content, and
-    - Make safe decisions about when to decrypt and render inline.
+The signed attributes Camel actually emits are:
 
-Triple-Wrap addresses this by:
+| OID | Attribute |
+| --- | --- |
+| 1.2.840.113549.1.9.3 | `contentType` (RFC 5652, mandatory) |
+| 1.2.840.113549.1.9.4 | `messageDigest` (RFC 5652, mandatory) |
+| 1.2.840.113549.1.9.5 | `signingTime` |
+| 1.2.840.113549.1.9.16.2.11 | `id-smime-aa-encrypKeyPref` (RFC 8551) |
+| 1.3.6.1.4.1.311.16.4 | Microsoft encryption key preference |
 
-- Binding sender identity and attributes **both** to:
-  - The original plaintext (inner signature), and
-  - The encrypted body (outer signature).
-- Providing **defence against malleability / Efail-style attacks** where:
-  - Attacker splices encrypted bodies or alters surrounding structures without access to keys.
+NSS does not add ESS attributes of its own accord. This was checked against a
+generated message rather than assumed.
 
-### 6.2 Assumptions
-
-- NSS correctly:
-  - Validates certificate chains for `signerInfo`.
-  - Enforces algorithms and key sizes in line with policy.
-- Certificate store:
-  - Is managed by the underlying OS/user trust policy (NSS database).
-  - Trusted roots and intermediate CAs are appropriately configured.
-- Evolution/EDS do not override critical NSS error states (e.g., bad signatures, untrusted roots) in a way that would mislead users.
-
-### 6.3 Compatibility and downgrade risks
-
-- **Other S/MIME clients**:
-  - Triple-Wrap is standards-based; conformant clients should:
-    - Verify outer signature (optional).
-    - Decrypt inner envelope.
-    - Verify inner signature.
-  - Some older or simpler clients may ignore the outer signature and only process inner layers; the message remains decryptable.
-- **Downgrade scenarios**:
-  - An attacker who can strip the outer signature and `multipart/signed` layer might try to present just the encrypted inner `smime.p7m` part.
-  - This is largely a client UX question:
-    - Our design does not prevent such stripping, but:
-      - The intended major gain is that **security-aware clients** (Gmail/Broadcom) refuse to decrypt unless the outer signature is present and valid.
+The distinction matters for how the work is described: it **produces RFC 2634
+triple-wrapped messages**; it does not **implement RFC 2634**. §3 is the notable
+gap — in RFC 2634 the outer signature exists largely so a gateway can read and
+act on a security label without decrypting, and no such label is carried here.
+The outer signature only authenticates the ciphertext.
 
 ---
 
-## 7. Testing strategy (high-level)
+## 6. Receive side: `multipart/signed` boundary scan
 
-### 7.1 Positive cases
+`multipart_signed_parse_content()` walks the body with `CamelMimeParser` to find
+the two part offsets. When that fails, a fallback scans the raw body for the
+boundary delimiter instead.
 
-- **Local round-trip**:
-  - Send a triple-wrapped message from Evolution (Triple-Wrap build) to another S/MIME-capable Evolution.
-  - Verify:
-    - Outer signature validates.
-    - Message decrypts.
-    - Inner signature validates.
-- **Gmail/Broadcom compatibility**:
-  - Send signed+encrypted mail to a Gmail account.
-  - Check:
-    - Body is visible **inline** (no unusable `smime.p7m` attachment).
-    - Gmail's UI indicates the message is signed/encrypted as expected.
+The case it exists for is a `multipart/signed` body that arrived
+base64-encoded. That is malformed — RFC 2045 §6.4 permits only `7bit`, `8bit` or
+`binary` on a multipart — and the parser correctly refuses to walk it. The
+fallback base64-decodes a copy of the body, locates the delimiters in that copy,
+and keeps it alongside the stored body.
 
-### 7.2 Negative and corner cases
+The stored body is **not** replaced. `multipart_signed_write_to_stream_sync()`
+writes the raw byte array back verbatim, so replacing it would emit a decoded
+body under the original `Content-Transfer-Encoding`, corrupting the message and
+its signature on any re-serialisation.
 
-- **Tampered outer signature**:
-  - Modify the outer `application/pkcs7-signature`.
-  - Client should refuse to validate the outer signature; Gmail should decline to decrypt.
-- **Missing outer signature**:
-  - Fall back to current behavior (Sign-then-Encrypt without outer sign).
-  - Confirm Gmail still exhibits the original "p7m attachment" behavior; this demonstrates the improvement from Triple-Wrap.
-- **Multiple recipients / mixed capabilities**:
-  - Recipients with:
-    - Full S/MIME support (should work).
-    - Limited support (may ignore outer signature but still decrypt).
+Delimiter matching follows RFC 2046 §5.1.1: `--boundary` counts only when
+followed by transport padding and the end of the line, so a longer boundary that
+merely starts the same way does not match.
+
+`src/camel/tests/message/test-multipart-signed.c` covers both properties.
 
 ---
 
-## 8. Summary
+## 7. Security considerations
 
-- Evolution and EDS already implement **sign** and **encrypt** using `CamelSMIMEContext` and NSS CMS primitives.
-- The current sign+encrypt flow is a two-step **Sign-then-Encrypt** without an outer signature, which is insufficient for some security-hardened clients (notably Gmail/Broadcom) that expect an RFC 2634 triple-wrap.
-- The proposed design:
-  - Adds an **outer clearsign step** (multipart/signed, SHA-256) **after** encryption.
-  - Keeps Triple-Wrap orchestration inside the **Evolution composer**, relying on existing Camel/NSS APIs.
-  - Aligns with RFC 2634 for triple wrapping and RFC 5035 for SHA-256 certificate identification.
-- This document provides the architectural and security rationale needed to defend the design in reviews and to maintain it over time.
+**What the outer signature adds.** With two layers, a party that cannot decrypt
+has no way to tell whether the ciphertext is the one the sender produced. The
+outer signature binds the sender's identity to the encrypted body, so the
+integrity of the ciphertext can be checked without the decryption key.
+
+**What it does not add.** It does not stop an attacker stripping the outer layer
+and presenting the bare `enveloped-data` part. Whether that is noticed is a
+recipient policy question, and no policy is enforced here.
+
+**Unchanged behaviour.** Sign-only and encrypt-only paths are untouched, as is
+the inner signature in both scope and construction.
+
+**Trust.** Certificate chain validation, algorithm policy and the trust store
+remain NSS's, via the user's NSS database.
+
+---
+
+## 8. Verification performed
+
+Against a message generated by the patched build:
+
+- The MIME skeleton — content types, per-part header sets, transfer encodings —
+  is identical to three triple-wrapped messages, written by three different
+  senders, that transited a mail security gateway.
+- The outer signature verifies (`openssl smime -verify`), and the bytes it
+  covers are the `enveloped-data` entity alone, with no RFC822 headers.
+- Decrypting yields the inner `signed-data` entity, whose signature covers the
+  original `text/plain` part and, again, no RFC822 headers.
+- The signed attributes present are the five listed in §5.
+
+Not established: that any particular gateway renders the result. The structural
+match is evidence, not proof, and the mechanism remains unknown.
+
+---
+
+## 9. Files changed
+
+| File | Change |
+| --- | --- |
+| `evolution/src/composer/e-msg-composer.c` | outer sign pass in `composer_build_message_smime()` |
+| `evolution-data-server/src/camel/camel-multipart-signed.c` | boundary-scan fallback |
+| `evolution-data-server/src/camel/camel-smime-context.c` | `Content-Description` on the signature part |
+| `evolution-data-server/src/camel/tests/message/test-multipart-signed.c` | boundary-scan tests |
