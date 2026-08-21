@@ -217,7 +217,10 @@ Not established:
 - That any particular gateway renders the result. The structural match is
   evidence, not proof, and the mechanism remains unknown.
 - Whether the clients above report the *validity* of the two signatures
-  correctly, as opposed to merely rendering the body.
+  correctly. None of them warned about a bad signature, which argues against
+  their rejecting it, but the security indicators were not examined
+  deliberately — a client silently showing no signature status at all would
+  not have been noticed.
 
 ---
 
