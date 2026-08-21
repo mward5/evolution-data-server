@@ -212,6 +212,12 @@ with the layout, and no such client has been found. An account-wide switch
 would in any case be poor insurance, since the sender cannot know which
 recipients are affected until after the mail has gone.
 
+The wrapper does not vary with the message content. A 74 KB HTML message with
+images and links produces a structure identical to a short plain-text one, and
+its outer signature verifies the same way, because the `enveloped-data` part is
+base64 whatever it holds. A gateway therefore sees the same shape for any
+message, which is why testing one message against one gateway generalises.
+
 A message from this build was then sent to a recipient behind the gateway
 described in §2. It was displayed with its body intact and no attachment,
 which is the behaviour the two-layer form does not get. The reply came back
