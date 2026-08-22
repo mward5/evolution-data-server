@@ -319,6 +319,12 @@ multipart_signed_parse_content_scan_boundary (CamelMultipartSigned *mps)
 	if (!byte_array->len)
 		return -1;
 
+	/* Whatever the offsets end up indexing is decided below, so do not leave
+	 * a decoded body from an earlier parse in place for them to be read
+	 * against. The callers clear it when they replace the content, but this
+	 * way the invariant does not depend on their doing so. */
+	g_clear_pointer (&mps->priv->decoded_body, g_byte_array_unref);
+
 	if (multipart_signed_scan_boundary (mps, boundary, byte_array) == 0)
 		return 0;
 
