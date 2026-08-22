@@ -31,9 +31,39 @@ recipient sees an empty body with an `smime.p7m` attachment. Messages arriving
 *from* those gateways are triple-wrapped, with an outer `multipart/signed` over
 the `enveloped-data` part.
 
-The mechanism behind that difference is not documented here, because it has not
-been established. What has been established is the wire format such gateways
-themselves emit, and this change makes Evolution produce the same shape.
+The reason is the Efail vulnerability. As a mitigation, Gmail decrypts only
+S/MIME messages that are triple wrapped per RFC 2634; anything else is left as
+an `smime.p7m` attachment. Thunderbird made a comparable change after Efail,
+refusing to decrypt unless the encryption layer is outermost.
+
+That requirement is not in Google's own published documentation as far as we
+have found, but it is described consistently by third parties who had to
+interoperate with it, including a commercial encrypted-mail service that
+implemented triple wrapping specifically for Gmail compatibility:
+
+  https://formsmarts.com/gmail-smime-encrypted-email
+
+There is an apparent contradiction worth addressing, because a reviewer who
+knows the Efail paper will raise it: the paper has a section headed "Meaningless
+signatures" arguing that signatures do *not* defend against these attacks. Its
+grounds are that a signature can simply be stripped, that a user notices too
+late, that signatures cannot be made mandatory, and that an invalid signature
+does not usually stop a client rendering the message anyway.
+
+Every one of those describes a client that *reports* signature status. They do
+not hold against a provider that *enforces* it. If a message is not decrypted
+at all without a valid signature over the ciphertext, then stripping the
+signature yields a message that is not decrypted, and a tampered ciphertext —
+the malleability gadget attacks — fails the signature and is not decrypted
+either. Nothing is rendered, so there is no window in which plaintext leaks.
+
+The paper's own preferred fix, authenticated encryption, requires a standards
+change that has not happened: CMS defines AuthenticatedData but S/MIME still
+does not adopt it. Requiring a signature over the ciphertext is what can be
+built from the primitives S/MIME actually has today.
+
+The residual cost is the paper's third objection, and it is real: a recipient
+on such a provider cannot receive unsigned encrypted mail at all.
 
 ---
 
@@ -225,8 +255,9 @@ through the same gateway and is itself triple-wrapped.
 
 Not established:
 
-- *Why* the gateway treats the two layouts differently. The outcome is now
-  known; the mechanism still is not.
+- Whether Google documents the triple-wrap requirement anywhere official. The
+  reason given in §2 is well attested by third parties, and matches the
+  observed behaviour exactly, but it is not a primary source.
 - Whether the clients above report the *validity* of the two signatures
   correctly. None of them warned about a bad signature, which argues against
   their rejecting it, but the security indicators were not examined
