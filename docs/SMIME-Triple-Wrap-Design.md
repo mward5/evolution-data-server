@@ -36,8 +36,23 @@ Google Workspace recipient at all.
 
 The reason is the Efail vulnerability. As a mitigation, Gmail decrypts only
 S/MIME messages that are triple wrapped per RFC 2634; anything else is left as
-an `smime.p7m` attachment. Thunderbird made a comparable change after Efail,
-refusing to decrypt unless the encryption layer is outermost.
+an `smime.p7m` attachment.
+
+Thunderbird responded to Efail in the opposite direction, and the contrast is
+worth knowing because it is the one real interoperability cost here. It would
+decrypt only when the encryption layer was outermost, so it could not read
+Gmail's triple-wrapped output — producing the same empty body and `smime.p7m`
+attachment, in the other direction. That was fixed in Thunderbird 128.1.0 ESR
+and 129, which ignore an outermost signature when the layer beneath it is
+encrypted:
+
+  https://bugzilla.mozilla.org/show_bug.cgi?id=1806161
+
+So a recipient on a Thunderbird older than those will not read a triple-wrapped
+message. The fix has been shipped since 2024, but it is a genuine trade-off
+rather than a pure improvement, and it should be stated as one. That bug is
+also independent confirmation, from Mozilla rather than from an interested
+vendor, that Google Workspace adds the outer signature.
 
 That requirement is not in Google's own published documentation as far as we
 have found, but it is described consistently by third parties who had to
@@ -239,11 +254,16 @@ Triple-wrapped messages were also opened in Evolution, iOS Mail and Outlook
 triple-wrapped mail itself, so Evolution is unusual in emitting it — but not in
 a way that gives those clients trouble reading it.
 
-That result is why no preference is offered to turn triple-wrapping off. The
-risk a preference would hedge against is a recipient whose client copes badly
-with the layout, and no such client has been found. An account-wide switch
-would in any case be poor insurance, since the sender cannot know which
-recipients are affected until after the mail has gone.
+Thunderbird was not among the clients tested, and it is the one known to have
+had trouble: see §2. Versions before 128.1.0 ESR and 129 do not read
+triple-wrapped mail at all.
+
+No preference is offered to turn triple-wrapping off nonetheless. The affected
+Thunderbird versions have been superseded since 2024, and an account-wide
+switch is poor insurance in any case, since the sender cannot know which
+recipients are affected until after the mail has gone. A recipient-aware
+decision would be the right shape for this if it ever proves necessary, and
+nothing here forecloses adding one.
 
 The wrapper does not vary with the message content. A 74 KB HTML message with
 images and links produces a structure identical to a short plain-text one, and
