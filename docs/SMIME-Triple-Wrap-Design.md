@@ -32,8 +32,7 @@ hosted S/MIME is triple-wrapped, with an outer `multipart/signed` over the
 `enveloped-data` part.
 
 The practical effect is that Evolution cannot send readable encrypted mail to a
-Google Workspace recipient, which is a large share of the corporate users who
-have S/MIME deployed at all.
+Google Workspace recipient at all.
 
 The reason is the Efail vulnerability. As a mitigation, Gmail decrypts only
 S/MIME messages that are triple wrapped per RFC 2634; anything else is left as
