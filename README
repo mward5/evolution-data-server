@@ -16,11 +16,18 @@ By using the evolution-data-server, other GNOME applications are integrating wit
 S/MIME TRIPLE-WRAP FORK
 ===========================
 
-This branch (triple-wrap) is a personal, experimental fork adding Camel-side
-support for RFC 2634 S/MIME triple-wrapping. It is not affiliated with the
-upstream Evolution Data Server project; everything above this section is the
-original upstream README.
+This branch (triple-wrap) is a personal, experimental fork. It is not
+affiliated with the upstream Evolution Data Server project; everything above
+this section is the original upstream README.
 
-See README-TRIPLEWRAP.md for what changed, how to build it, and which parts of
-RFC 2634 it does and does not implement, and docs/SMIME-Triple-Wrap-Design.md
-for the design.
+Its only change to Camel is a Content-Description on the S/MIME signature part,
+in src/camel/camel-smime-context.c, matching what camel_gpg_context already
+sets on the signature part it builds.
+
+The RFC 2634 S/MIME triple-wrapping itself needs no change to Camel and is
+implemented entirely in Evolution. See the triple-wrap branch of
+
+    https://github.com/mward5/evolution
+
+for what it does, how to build it, which parts of RFC 2634 it does and does not
+implement, and the design.
