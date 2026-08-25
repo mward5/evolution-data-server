@@ -15,7 +15,7 @@ permissions:
 jobs:
   build-deb:
     runs-on: ubuntu-latest
-    container: ubuntu:devel
+    container: ubuntu:26.04
     permissions:
       contents: read
       id-token: write
