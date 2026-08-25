@@ -38,18 +38,34 @@ jobs:
 
       - name: Collect artifacts
         run: |
-          mkdir -p dist
+          mkdir -p dist debug
           mv ../*.deb dist/
-          ls -l dist
+          # Debug symbols are a large fraction of the bytes and are rarely
+          # wanted; keep them off the release page. They stay reachable as a
+          # workflow artifact for as long as retention allows.
+          mv dist/*dbgsym*.deb debug/ 2>/dev/null || true
+          # A single archive, so someone on the release web page can take the
+          # whole set in one download instead of clicking each package. It is
+          # attested alongside the individual packages below, so either form
+          # can be verified with `gh attestation verify`.
+          ( cd dist && tar -czf "../${BUNDLE}" *.deb && mv "../${BUNDLE}" . )
+          ls -l dist debug
+        env:
+          BUNDLE: ${{ github.event.repository.name }}-${{ github.ref_name }}-debs.tar.gz
 
       - uses: actions/attest-build-provenance@v2
         with:
-          subject-path: dist/*.deb
+          subject-path: |
+            dist/*.deb
+            dist/*.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
-          name: deb-packages
-          path: dist/*.deb
+          name: deb-packages-${{ github.ref_name }}
+          path: |
+            dist/*.deb
+            dist/*.tar.gz
+            debug/*.deb
 
   build-rpm:
     runs-on: ubuntu-latest
@@ -87,18 +103,30 @@ jobs:
 
       - name: Collect artifacts
         run: |
-          mkdir -p dist
+          mkdir -p dist debug
           find "$HOME/rpmbuild/RPMS" -name '*.rpm' -exec cp -v {} dist/ \;
-          ls -l dist
+          # Same as the Debian job: debuginfo and debugsource are the bulk of
+          # the bytes and stay as a workflow artifact rather than on the
+          # release page.
+          mv dist/*debuginfo*.rpm dist/*debugsource*.rpm debug/ 2>/dev/null || true
+          ( cd dist && tar -czf "../${BUNDLE}" *.rpm && mv "../${BUNDLE}" . )
+          ls -l dist debug
+        env:
+          BUNDLE: ${{ github.event.repository.name }}-${{ github.ref_name }}-rpms.tar.gz
 
       - uses: actions/attest-build-provenance@v2
         with:
-          subject-path: dist/*.rpm
+          subject-path: |
+            dist/*.rpm
+            dist/*.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rpm-packages
-          path: dist/*.rpm
+          name: rpm-packages-${{ github.ref_name }}
+          path: |
+            dist/*.rpm
+            dist/*.tar.gz
+            debug/*.rpm
 
   publish-release:
     needs: [build-deb, build-rpm]
@@ -128,4 +156,4 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "$TAG" \
             --generate-notes \
-            dist/*.deb dist/*.rpm
+            dist/*.tar.gz dist/*.deb dist/*.rpm
