@@ -51,11 +51,6 @@ struct _CamelMultipartSignedPrivate {
 	 *     parts, or visa versa? */
 	CamelStream *contentraw;
 
-	/* A decoded copy of the body, set only when the body had to be decoded
-	 * to find the parts in it; the offsets below index into it, instead of
-	 * into the data wrapper byte array. */
-	GByteArray *decoded_body;
-
 	/* Offset pointers of start of boundary in content object. */
 	goffset start1, end1;
 	goffset start2, end2;
@@ -84,12 +79,7 @@ multipart_signed_clip_stream (CamelMultipartSigned *mps,
 
 	data_wrapper = CAMEL_DATA_WRAPPER (mps);
 
-	/* The offsets can index into a decoded copy of the body; see
-	 * multipart_signed_parse_content_scan_boundary (). */
-	src = mps->priv->decoded_body;
-	if (src == NULL)
-		src = camel_data_wrapper_get_byte_array (data_wrapper);
-
+	src = camel_data_wrapper_get_byte_array (data_wrapper);
 	dst = g_byte_array_new ();
 
 	if (start >= 0 && end < src->len) {
@@ -147,201 +137,6 @@ multipart_signed_skip_content (CamelMimeParser *cmp)
 	default:
 		g_warning ("Invalid state encountered???: %u", camel_mime_parser_state (cmp));
 	}
-
-	return 0;
-}
-
-/* Find the next boundary delimiter line at or after @from, that is "--boundary",
- * or "--boundary--" when @final_boundary is TRUE. Returns the offset of its
- * first '-', or -1 when there is none. The @after_line is set to the offset
- * just past the end of the delimiter line. */
-static goffset
-multipart_signed_find_boundary (const GByteArray *byte_array,
-                                const gchar *boundary,
-                                goffset from,
-                                goffset *after_line,
-                                gboolean final_boundary)
-{
-	const guint8 *data = byte_array->data;
-	gsize len = byte_array->len;
-	gchar *delim;
-	goffset pos;
-	gsize dlen;
-
-	if (final_boundary)
-		delim = g_strdup_printf ("--%s--", boundary);
-	else
-		delim = g_strdup_printf ("--%s", boundary);
-	dlen = strlen (delim);
-
-	for (pos = from; pos + (goffset) dlen <= (goffset) len; pos++) {
-		goffset after;
-
-		if (pos > from && data[pos - 1] != '\n' && data[pos - 1] != '\r')
-			continue;
-		if (memcmp (data + pos, delim, dlen) != 0)
-			continue;
-
-		/* The delimiter can be followed only by transport padding and the
-		 * end of the line (RFC 2046, Section 5.1.1), otherwise this is a
-		 * longer boundary which merely starts the same way, or, when not
-		 * looking for the final one, the closing delimiter. */
-		after = pos + dlen;
-		while (after < (goffset) len && (data[after] == ' ' || data[after] == '\t'))
-			after++;
-		if (after < (goffset) len && data[after] != '\r' && data[after] != '\n')
-			continue;
-
-		if (after < (goffset) len && data[after] == '\r')
-			after++;
-		if (after < (goffset) len && data[after] == '\n')
-			after++;
-
-		*after_line = after;
-		g_free (delim);
-
-		return pos;
-	}
-
-	g_free (delim);
-
-	return -1;
-}
-
-/* Scan @body for the two boundary-delimited parts and record their offsets.
- * The offsets are stored only when all three delimiters are found, thus a
- * failed scan leaves the object untouched. Returns 0 on success. */
-static gint
-multipart_signed_scan_boundary (CamelMultipartSigned *mps,
-                                const gchar *boundary,
-                                const GByteArray *body)
-{
-	goffset b1_start, b1_after, b2_start, b2_after, end_start, end_after;
-
-	/* First delimiter: optional leading newline then --boundary\n */
-	b1_start = multipart_signed_find_boundary (body, boundary, 0, &b1_after, FALSE);
-	if (b1_start == -1)
-		return -1;
-
-	/* Second delimiter: \n--boundary\n (start of signature part) */
-	b2_start = multipart_signed_find_boundary (body, boundary, b1_after, &b2_after, FALSE);
-	if (b2_start == -1) {
-		g_debug ("%s: second boundary not found", G_STRFUNC);
-		return -1;
-	}
-
-	/* Closing delimiter: \n--boundary-- */
-	end_start = multipart_signed_find_boundary (body, boundary, b2_after, &end_after, TRUE);
-	if (end_start == -1) {
-		g_debug ("%s: closing boundary not found", G_STRFUNC);
-		return -1;
-	}
-
-	/* Part 1 (content) is from b1_after to b2_start (exclude trailing CR/LF of part 1 body) */
-	mps->priv->start1 = b1_after;
-	mps->priv->end1 = b2_start;
-	if (mps->priv->end1 > mps->priv->start1 && body->data[mps->priv->end1 - 1] == '\n')
-		mps->priv->end1--;
-	if (mps->priv->end1 > mps->priv->start1 && body->data[mps->priv->end1 - 1] == '\r')
-		mps->priv->end1--;
-
-	/* Part 2 (signature) is from b2_after to end_start */
-	mps->priv->start2 = b2_after;
-	mps->priv->end2 = end_start;
-	if (mps->priv->end2 > mps->priv->start2 && body->data[mps->priv->end2 - 1] == '\n')
-		mps->priv->end2--;
-	if (mps->priv->end2 > mps->priv->start2 && body->data[mps->priv->end2 - 1] == '\r')
-		mps->priv->end2--;
-
-	return 0;
-}
-
-/* The body of a multipart cannot legally be base64-encoded (RFC 2045,
- * Section 6.4), but messages which do it exist. Returns the decoded body, or
- * NULL when the body does not look base64-encoded. */
-static GByteArray *
-multipart_signed_decode_base64_body (const GByteArray *body)
-{
-	GByteArray *decoded_body;
-	guchar *decoded;
-	gchar *text;
-	gsize decoded_len = 0;
-	guint ii;
-
-	if (body->len < 4)
-		return NULL;
-
-	for (ii = 0; ii < body->len; ii++) {
-		guint8 chr = body->data[ii];
-
-		if (chr != '\n' && chr != '\r' && chr != ' ' && chr != '\t' &&
-		    chr != '+' && chr != '/' && chr != '=' && !g_ascii_isalnum (chr))
-			return NULL;
-	}
-
-	text = g_strndup ((const gchar *) body->data, body->len);
-	decoded = g_base64_decode (text, &decoded_len);
-	g_free (text);
-
-	if (decoded == NULL)
-		return NULL;
-
-	/* The body begins either with the first delimiter or with the newline
-	 * preceding it; anything else did not decode into a multipart body. */
-	if (!decoded_len || (decoded[0] != '\n' && decoded[0] != '\r' && decoded[0] != '-')) {
-		g_free (decoded);
-		return NULL;
-	}
-
-	decoded_body = g_byte_array_new ();
-	g_byte_array_append (decoded_body, decoded, decoded_len);
-	g_free (decoded);
-
-	return decoded_body;
-}
-
-/* Fallback when the MIME parser fails: scan the body for the boundary and set
- * the part offsets. Used for triple-wrap (sign-encrypt-sign) and other
- * multipart/signed which the parser does not handle. */
-static gint
-multipart_signed_parse_content_scan_boundary (CamelMultipartSigned *mps)
-{
-	CamelMultipart *mp = (CamelMultipart *) mps;
-	GByteArray *byte_array;
-	GByteArray *decoded_body;
-	const gchar *boundary;
-
-	boundary = camel_multipart_get_boundary (mp);
-	if (!boundary || !*boundary)
-		return -1;
-
-	byte_array = camel_data_wrapper_get_byte_array (CAMEL_DATA_WRAPPER (mps));
-	if (!byte_array->len)
-		return -1;
-
-	/* Whatever the offsets end up indexing is decided below, so do not leave
-	 * a decoded body from an earlier parse in place for them to be read
-	 * against. The callers clear it when they replace the content, but this
-	 * way the invariant does not depend on their doing so. */
-	g_clear_pointer (&mps->priv->decoded_body, g_byte_array_unref);
-
-	if (multipart_signed_scan_boundary (mps, boundary, byte_array) == 0)
-		return 0;
-
-	decoded_body = multipart_signed_decode_base64_body (byte_array);
-	if (decoded_body == NULL)
-		return -1;
-
-	if (multipart_signed_scan_boundary (mps, boundary, decoded_body) != 0) {
-		g_byte_array_unref (decoded_body);
-		return -1;
-	}
-
-	/* The offsets index into the decoded body now, thus keep it for
-	 * multipart_signed_clip_stream (). The data wrapper byte array keeps the
-	 * form the message arrived in, which is what is written back out. */
-	g_clear_pointer (&mps->priv->decoded_body, g_byte_array_unref);
-	mps->priv->decoded_body = decoded_body;
 
 	return 0;
 }
@@ -418,12 +213,6 @@ multipart_signed_parse_content (CamelMultipartSigned *mps)
 		if (mps->priv->end1 == -1)
 			mps->priv->start1 = -1;
 
-		/* Fallback: scan raw body for boundary (e.g. triple-wrap / nested pkcs7-mime). */
-		if (byte_array->len == 0)
-			g_debug ("multipart_signed_parse_content: parser failed and body length 0, cannot use fallback");
-		else if (multipart_signed_parse_content_scan_boundary (mps) == 0)
-			return 0;
-
 		return -1;
 	}
 
@@ -437,7 +226,6 @@ multipart_signed_dispose (GObject *object)
 
 	priv = CAMEL_MULTIPART_SIGNED (object)->priv;
 
-	g_clear_pointer (&priv->decoded_body, g_byte_array_unref);
 	g_clear_object (&priv->content);
 	g_clear_object (&priv->signature);
 	g_clear_object (&priv->contentraw);
@@ -546,7 +334,7 @@ multipart_signed_write_to_stream_sync (CamelDataWrapper *data_wrapper,
 		return -1;
 	total += count;
 
-	/* write the terminating boundary delimiter */
+	/* write the terminating boudary delimiter */
 	content = g_strdup_printf ("\n--%s--\n", boundary);
 	count = camel_stream_write_string (
 		stream, content, cancellable, error);
@@ -587,7 +375,6 @@ multipart_signed_construct_from_stream_sync (CamelDataWrapper *data_wrapper,
 
 	if (success) {
 		priv->start1 = -1;
-		g_clear_pointer (&priv->decoded_body, g_byte_array_unref);
 		g_clear_object (&priv->content);
 		g_clear_object (&priv->signature);
 		g_clear_object (&priv->contentraw);
@@ -712,7 +499,7 @@ multipart_signed_write_to_output_stream_sync (CamelDataWrapper *data_wrapper,
 		return -1;
 	total += result;
 
-	/* write the terminating boundary delimiter */
+	/* write the terminating boudary delimiter */
 	content = g_strdup_printf ("\n--%s--\n", boundary);
 	success = g_output_stream_write_all (
 		output_stream,
@@ -755,7 +542,6 @@ multipart_signed_construct_from_input_stream_sync (CamelDataWrapper *data_wrappe
 
 	if (success) {
 		priv->start1 = -1;
-		g_clear_pointer (&priv->decoded_body, g_byte_array_unref);
 		g_clear_object (&priv->content);
 		g_clear_object (&priv->signature);
 		g_clear_object (&priv->contentraw);
@@ -912,7 +698,6 @@ multipart_signed_construct_from_parser (CamelMultipart *multipart,
 		g_byte_array_append (byte_array, (guint8 *) buf, len);
 
 	priv->start1 = -1;
-	g_clear_pointer (&priv->decoded_body, g_byte_array_unref);
 	g_clear_object (&priv->content);
 	g_clear_object (&priv->signature);
 	g_clear_object (&priv->contentraw);
