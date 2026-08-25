@@ -59,13 +59,20 @@ jobs:
             dist/*.deb
             dist/*.tar.gz
 
+      # One directory per artifact. upload-artifact roots an artifact at the
+      # least common ancestor of everything it matches, so listing paths from
+      # both dist/ and debug/ pushed those directory names into the artifact,
+      # and the release step then looked for dist/*.deb inside dist/dist/.
       - uses: actions/upload-artifact@v4
         with:
           name: deb-packages-${{ github.ref_name }}
-          path: |
-            dist/*.deb
-            dist/*.tar.gz
-            debug/*.deb
+          path: dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-debug-symbols-${{ github.ref_name }}
+          path: debug/*
+          if-no-files-found: ignore
 
   build-rpm:
     runs-on: ubuntu-latest
@@ -120,13 +127,20 @@ jobs:
             dist/*.rpm
             dist/*.tar.gz
 
+      # One directory per artifact. upload-artifact roots an artifact at the
+      # least common ancestor of everything it matches, so listing paths from
+      # both dist/ and debug/ pushed those directory names into the artifact,
+      # and the release step then looked for dist/*.deb inside dist/dist/.
       - uses: actions/upload-artifact@v4
         with:
           name: rpm-packages-${{ github.ref_name }}
-          path: |
-            dist/*.rpm
-            dist/*.tar.gz
-            debug/*.rpm
+          path: dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm-debug-symbols-${{ github.ref_name }}
+          path: debug/*
+          if-no-files-found: ignore
 
   publish-release:
     needs: [build-deb, build-rpm]
@@ -134,9 +148,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Only the package artifacts; the debug-symbol ones are deliberately not
+      # published, and merge-multiple would otherwise flatten them in here.
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: '*-packages-*'
           merge-multiple: true
 
       - name: Determine tag
