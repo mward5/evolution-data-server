@@ -12,6 +12,14 @@ on:
 permissions:
   contents: read
 
+# The tag the release is published under. A tag push sets github.ref_name to
+# the tag, but a manual re-run sets it to the branch the workflow was
+# dispatched from, which is how the triplewrap6 packages came to be published
+# as "...-triple-wrap-debs.tar.gz". Resolve it once here, the same way the
+# publish job always has, so the artifact names agree with the release.
+env:
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
 jobs:
   build-deb:
     runs-on: ubuntu-latest
@@ -51,7 +59,7 @@ jobs:
           ( cd dist && tar -czf "../${BUNDLE}" *.deb && mv "../${BUNDLE}" . )
           ls -l dist debug
         env:
-          BUNDLE: ${{ github.event.repository.name }}-${{ github.ref_name }}-debs.tar.gz
+          BUNDLE: ${{ github.event.repository.name }}-${{ env.RELEASE_TAG }}-debs.tar.gz
 
       - uses: actions/attest-build-provenance@v2
         with:
@@ -65,12 +73,12 @@ jobs:
       # and the release step then looked for dist/*.deb inside dist/dist/.
       - uses: actions/upload-artifact@v4
         with:
-          name: deb-packages-${{ github.ref_name }}
+          name: deb-packages-${{ env.RELEASE_TAG }}
           path: dist/*
 
       - uses: actions/upload-artifact@v4
         with:
-          name: deb-debug-symbols-${{ github.ref_name }}
+          name: deb-debug-symbols-${{ env.RELEASE_TAG }}
           path: debug/*
           if-no-files-found: ignore
 
@@ -119,7 +127,7 @@ jobs:
           ( cd dist && tar -czf "../${BUNDLE}" *.rpm && mv "../${BUNDLE}" . )
           ls -l dist debug
         env:
-          BUNDLE: ${{ github.event.repository.name }}-${{ github.ref_name }}-rpms.tar.gz
+          BUNDLE: ${{ github.event.repository.name }}-${{ env.RELEASE_TAG }}-rpms.tar.gz
 
       - uses: actions/attest-build-provenance@v2
         with:
@@ -133,12 +141,12 @@ jobs:
       # and the release step then looked for dist/*.deb inside dist/dist/.
       - uses: actions/upload-artifact@v4
         with:
-          name: rpm-packages-${{ github.ref_name }}
+          name: rpm-packages-${{ env.RELEASE_TAG }}
           path: dist/*
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rpm-debug-symbols-${{ github.ref_name }}
+          name: rpm-debug-symbols-${{ env.RELEASE_TAG }}
           path: debug/*
           if-no-files-found: ignore
 
@@ -156,21 +164,13 @@ jobs:
           pattern: '*-packages-*'
           merge-multiple: true
 
-      - name: Determine tag
-        run: |
-          TAG="${{ inputs.tag }}"
-          if [ -z "$TAG" ]; then
-            TAG="${GITHUB_REF_NAME}"
-          fi
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
-
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -l dist
-          gh release create "$TAG" \
+          gh release create "$RELEASE_TAG" \
             --repo "${{ github.repository }}" \
-            --title "$TAG" \
+            --title "$RELEASE_TAG" \
             --generate-notes \
             dist/*.tar.gz dist/*.deb dist/*.rpm
