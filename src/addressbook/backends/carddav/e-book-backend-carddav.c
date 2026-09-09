@@ -1960,10 +1960,15 @@ ebb_carddav_save_contact_sync (EBookMetaBackend *meta_backend,
 	g_free (etag);
 	g_free (uid);
 
-	if (overwrite_existing && g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_PRECONDITION_FAILED)) {
+	if (overwrite_existing && g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_BAD_REQUEST)) {
 		g_clear_error (&local_error);
 
-		/* Pretend success when using the serer version on conflict,
+		/* Google can reject saving. Pretend success to clear from queue; next refresh will sync. */
+		success = TRUE;
+	} else if (overwrite_existing && g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_PRECONDITION_FAILED)) {
+		g_clear_error (&local_error);
+
+		/* Pretend success when using the server version on conflict,
 		   the component will be updated during the refresh */
 		if (conflict_resolution == E_CONFLICT_RESOLUTION_KEEP_SERVER)
 			success = TRUE;

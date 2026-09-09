@@ -1189,7 +1189,8 @@ ecb_webdav_notes_save_component_sync (ECalMetaBackend *meta_backend,
 
 			counter++;
 		} while (!success && new_filename && !g_cancellable_is_cancelled (cancellable) &&
-			 g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_PRECONDITION_FAILED));
+			 g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_PRECONDITION_FAILED) &&
+			 !g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_BAD_REQUEST));
 
 		if (success && new_filename && extra && *extra) {
 			/* The name on the server changed, remove the old file */
@@ -1281,10 +1282,15 @@ ecb_webdav_notes_save_component_sync (ECalMetaBackend *meta_backend,
 	g_free (href);
 	g_free (etag);
 
-	if (overwrite_existing && g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_PRECONDITION_FAILED)) {
+	if (overwrite_existing && g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_BAD_REQUEST)) {
 		g_clear_error (&local_error);
 
-		/* Pretend success when using the serer version on conflict,
+		/* Google can reject saving. Pretend success to clear from queue; next refresh will sync. */
+		success = TRUE;
+	} else if (overwrite_existing && g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_PRECONDITION_FAILED)) {
+		g_clear_error (&local_error);
+
+		/* Pretend success when using the server version on conflict,
 		   the component will be updated during the refresh */
 		if (conflict_resolution == E_CONFLICT_RESOLUTION_KEEP_SERVER)
 			success = TRUE;
