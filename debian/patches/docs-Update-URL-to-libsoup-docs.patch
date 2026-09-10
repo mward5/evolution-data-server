@@ -1,0 +1,25 @@
+From: Simon McVittie <smcv@collabora.com>
+Date: Wed, 19 Mar 2025 14:18:22 +0000
+Subject: docs: Update URL to libsoup docs
+
+Similar to GNOME/libsoup!444, Teams/Websites/developer.gnome.org!214
+
+Signed-off-by: Simon McVittie <smcv@collabora.com>
+Forwarded: https://gitlab.gnome.org/GNOME/evolution-data-server/-/merge_requests/170
+---
+ docs/libedataserver.toml.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/docs/libedataserver.toml.in b/docs/libedataserver.toml.in
+index 8423bb0..4287c61 100644
+--- a/docs/libedataserver.toml.in
++++ b/docs/libedataserver.toml.in
+@@ -22,7 +22,7 @@ search_index = true
+   [dependencies."Soup-3.0"]
+   name = "Soup"
+   description = "HTTP client/server library for GNOME"
+-  docs_url = "https://libsoup.org/libsoup-3.0"
++  docs_url = "https://libsoup.gnome.org/libsoup-3.0"
+ 
+   [dependencies."libxml2-2.0"]
+   name = "libxml2"

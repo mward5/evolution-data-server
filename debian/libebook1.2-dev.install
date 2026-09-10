@@ -1,0 +1,6 @@
+usr/include/evolution-data-server/libebook
+usr/lib/*/libebook-1.2.so
+usr/lib/*/pkgconfig/libebook-1.2.pc
+usr/share/gir-1.0/EBook-1.2.gir
+usr/share/vala/vapi/libebook-1.2.deps
+usr/share/vala/vapi/libebook-1.2.vapi

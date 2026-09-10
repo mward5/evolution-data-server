@@ -1,0 +1,32 @@
+From: Milan Crha <mcrha@redhat.com>
+Date: Mon, 18 Aug 2025 16:00:12 +0200
+Subject: I#605 - Camel: MH account busy-loops when reading directory content
+
+Closes https://gitlab.gnome.org/GNOME/evolution-data-server/-/issues/605
+
+(cherry picked from commit 9a212fd7f8a91332b87869ac93e6ccd93133308d)
+
+Origin: upstream, after 3.57.2
+---
+ src/camel/camel-folder-summary.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/camel/camel-folder-summary.c b/src/camel/camel-folder-summary.c
+index 6cb4e50..79aba88 100644
+--- a/src/camel/camel-folder-summary.c
++++ b/src/camel/camel-folder-summary.c
+@@ -2661,10 +2661,10 @@ camel_folder_summary_clear (CamelFolderSummary *summary,
+ 	g_return_val_if_fail (CAMEL_IS_FOLDER_SUMMARY (summary), FALSE);
+ 
+ 	camel_folder_summary_lock (summary);
+-	if (camel_folder_summary_count (summary) == 0) {
+-		camel_folder_summary_unlock (summary);
+-		return TRUE;
+-	}
++
++	/* Do not check the camel_folder_summary_count() or similar here, the clear()
++	   can be called before the summary is loaded, thus the shortcut could mean
++	   the messages are still left in the DB file. */
+ 
+ 	g_hash_table_remove_all (summary->priv->uids);
+ 	remove_all_loaded (summary);

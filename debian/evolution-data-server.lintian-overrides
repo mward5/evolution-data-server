@@ -1,0 +1,2 @@
+# camel-lock-helper-1.2 must have access to the mail lock files
+evolution-data-server: elevated-privileges 2755 root/mail [usr/libexec/camel-lock-helper-1.2]

@@ -1,0 +1,6 @@
+usr/include/evolution-data-server/libebackend
+usr/lib/*/libebackend-1.2.so
+usr/lib/*/pkgconfig/libebackend-1.2.pc
+usr/share/gir-1.0/EBackend-1.2.gir
+usr/share/vala/vapi/libebackend-1.2.deps
+usr/share/vala/vapi/libebackend-1.2.vapi

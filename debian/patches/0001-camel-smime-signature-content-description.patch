@@ -1,0 +1,18 @@
+Description: Content-Description on the S/MIME signature part
+Origin: https://github.com/mward5/evolution-data-server/tree/triple-wrap
+Author: Mike C. Ward <mward5@tinfoil-fedora.com>
+Forwarded: not-yet
+Last-Update: 2026-09-10
+
+diff --git a/src/camel/camel-smime-context.c b/src/camel/camel-smime-context.c
+index 599e74a6c..aa00f61c0 100644
+--- a/src/camel/camel-smime-context.c
++++ b/src/camel/camel-smime-context.c
+@@ -1086,6 +1086,7 @@ smime_context_sign_sync (CamelCipherContext *context,
+ 
+ 		camel_mime_part_set_filename (sigpart, "smime.p7s");
+ 		camel_mime_part_set_disposition (sigpart, "attachment");
++		camel_mime_part_set_description (sigpart, "S/MIME Cryptographic Signature");
+ 		camel_mime_part_set_encoding (sigpart, CAMEL_TRANSFER_ENCODING_BASE64);
+ 
+ 		mps = camel_multipart_signed_new ();
