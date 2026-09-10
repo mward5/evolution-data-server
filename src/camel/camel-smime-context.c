@@ -93,187 +93,6 @@ sm_write_stream (gpointer arg,
 	camel_stream_write ((CamelStream *) arg, buf, len, NULL, NULL);
 }
 
-/* Recursively re-encodes a single BER-encoded ASN.1 value starting at
- * *inout_pos into canonical definite-length DER, appending the result
- * to @out and advancing *inout_pos past the value (including, for an
- * indefinite-length constructed value, its end-of-contents octets).
- * Returns FALSE if @data is truncated or malformed at that position. */
-static gboolean
-sm_ber_canon_value (const guint8 *data,
-                     gsize data_len,
-                     gsize *inout_pos,
-                     GByteArray *out)
-{
-	gsize pos = *inout_pos;
-	gsize tag_start = pos;
-	gsize tag_end;
-	gsize length_end;
-	gboolean constructed;
-	gboolean indefinite = FALSE;
-	gsize content_len = 0;
-	GByteArray *content;
-
-	if (pos >= data_len)
-		return FALSE;
-
-	constructed = (data[pos] & 0x20) != 0;
-
-	/* Tag octet(s): the high-tag-number form (low 5 bits all set)
-	 * continues the tag number into subsequent octets. CMS/PKCS#7
-	 * structures never use it, but handle it rather than mis-parse. */
-	if ((data[pos] & 0x1f) == 0x1f) {
-		pos++;
-		while (pos < data_len && (data[pos] & 0x80) != 0)
-			pos++;
-		if (pos >= data_len)
-			return FALSE;
-		pos++;
-	} else {
-		pos++;
-	}
-	tag_end = pos;
-
-	if (pos >= data_len)
-		return FALSE;
-
-	if ((data[pos] & 0x80) == 0) {
-		/* Short form: definite length. */
-		content_len = data[pos];
-		pos++;
-	} else if (data[pos] == 0x80) {
-		/* Indefinite form, only legal on constructed values. This is
-		 * what NSS's streaming CMS encoder emits. */
-		if (!constructed)
-			return FALSE;
-		indefinite = TRUE;
-		pos++;
-	} else {
-		/* Long form: definite length in the following N octets. */
-		guint n_octets = data[pos] & 0x7f;
-		guint ii;
-
-		pos++;
-		if (n_octets == 0 || n_octets > sizeof (content_len) || pos + n_octets > data_len)
-			return FALSE;
-
-		for (ii = 0; ii < n_octets; ii++)
-			content_len = (content_len << 8) | data[pos + ii];
-		pos += n_octets;
-	}
-	length_end = pos;
-
-	content = g_byte_array_new ();
-
-	if (!constructed) {
-		if (indefinite || length_end + content_len > data_len) {
-			g_byte_array_free (content, TRUE);
-			return FALSE;
-		}
-		g_byte_array_append (content, data + length_end, content_len);
-		pos = length_end + content_len;
-	} else if (!indefinite) {
-		gsize child_end = length_end + content_len;
-
-		if (child_end > data_len) {
-			g_byte_array_free (content, TRUE);
-			return FALSE;
-		}
-
-		pos = length_end;
-		while (pos < child_end) {
-			if (!sm_ber_canon_value (data, data_len, &pos, content)) {
-				g_byte_array_free (content, TRUE);
-				return FALSE;
-			}
-		}
-		if (pos != child_end) {
-			g_byte_array_free (content, TRUE);
-			return FALSE;
-		}
-	} else {
-		pos = length_end;
-		while (TRUE) {
-			if (pos + 1 >= data_len) {
-				g_byte_array_free (content, TRUE);
-				return FALSE;
-			}
-			if (data[pos] == 0x00 && data[pos + 1] == 0x00) {
-				pos += 2;
-				break;
-			}
-			if (!sm_ber_canon_value (data, data_len, &pos, content)) {
-				g_byte_array_free (content, TRUE);
-				return FALSE;
-			}
-		}
-	}
-
-	/* Original tag octets, unchanged. */
-	g_byte_array_append (out, data + tag_start, tag_end - tag_start);
-
-	/* Canonical (minimal, definite-form) length octets. */
-	if (content->len < 0x80) {
-		guint8 len_octet = (guint8) content->len;
-		g_byte_array_append (out, &len_octet, 1);
-	} else {
-		guint8 len_bytes[sizeof (gsize)];
-		guint8 first;
-		gsize v = content->len;
-		gsize n = 0;
-		gsize ii;
-
-		while (v > 0) {
-			len_bytes[n++] = (guint8) (v & 0xff);
-			v >>= 8;
-		}
-		first = 0x80 | (guint8) n;
-		g_byte_array_append (out, &first, 1);
-		for (ii = 0; ii < n; ii++) {
-			guint8 b = len_bytes[n - 1 - ii];
-			g_byte_array_append (out, &b, 1);
-		}
-	}
-
-	g_byte_array_append (out, content->data, content->len);
-	g_byte_array_free (content, TRUE);
-
-	*inout_pos = pos;
-
-	return TRUE;
-}
-
-/* NSS's streaming CMS encoder (NSS_CMSEncoder_Start/Update/Finish) always
- * produces BER with indefinite-length constructed values and explicit
- * end-of-contents octets, because it doesn't know the total content length
- * until NSS_CMSEncoder_Finish() runs. That is valid BER and OpenSSL parses
- * it without complaint, but at least one common verifier (Thunderbird, on
- * mail signed by this client) fails to recognize a SignedData wrapped in
- * indefinite-length BER as a signature at all, and silently reports the
- * message as unsigned rather than raising a parse error. Canonicalize to
- * definite-length DER before handing the bytes off, for compatibility. */
-static GByteArray *
-sm_ber_to_der (const GByteArray *ber)
-{
-	GByteArray *der;
-	gsize pos = 0;
-
-	der = g_byte_array_new ();
-
-	if (ber->len == 0)
-		return der;
-
-	if (!sm_ber_canon_value (ber->data, ber->len, &pos, der) || pos != ber->len) {
-		/* Malformed, or valid BER in a shape this parser doesn't
-		 * expect (e.g. multiple top-level values): fall back to the
-		 * original bytes rather than risk corrupting a structure we
-		 * don't fully understand. */
-		g_byte_array_set_size (der, 0);
-		g_byte_array_append (der, ber->data, ber->len);
-	}
-
-	return der;
-}
-
 static PK11SymKey *
 sm_decrypt_key (gpointer arg,
                 SECAlgorithmID *algid)
@@ -1170,8 +989,6 @@ smime_context_sign_sync (CamelCipherContext *context,
 	NSSCMSMessage *cmsg;
 	CamelStream *ostream, *istream;
 	GByteArray *buffer;
-	GByteArray *der_buffer;
-	CamelStream *der_stream;
 	SECOidTag sechash;
 	NSSCMSEncoderContext *enc;
 	CamelDataWrapper *dw;
@@ -1249,16 +1066,10 @@ smime_context_sign_sync (CamelCipherContext *context,
 
 	success = TRUE;
 
-	/* NSS's streaming encoder wrote indefinite-length BER into ostream;
-	 * canonicalize it to definite-length DER before wrapping it up (see
-	 * sm_ber_to_der() for why). */
-	der_buffer = sm_ber_to_der (camel_stream_mem_get_byte_array (CAMEL_STREAM_MEM (ostream)));
-	der_stream = camel_stream_mem_new_with_byte_array (der_buffer);
-
 	dw = camel_data_wrapper_new ();
+	g_seekable_seek (G_SEEKABLE (ostream), 0, G_SEEK_SET, NULL, NULL);
 	camel_data_wrapper_construct_from_stream_sync (
-		dw, der_stream, cancellable, NULL);
-	g_object_unref (der_stream);
+		dw, ostream, cancellable, NULL);
 	camel_data_wrapper_set_encoding (dw, CAMEL_TRANSFER_ENCODING_BINARY);
 
 	if (((CamelSMIMEContext *) context)->priv->sign_mode == CAMEL_SMIME_SIGN_CLEARSIGN) {
@@ -1596,8 +1407,6 @@ smime_context_encrypt_sync (CamelCipherContext *context,
 	CamelDataWrapper *dw;
 	CamelContentType *ct;
 	GByteArray *buffer;
-	GByteArray *der_buffer;
-	CamelStream *der_stream;
 	GPtrArray *recipients;
 	GSList *gathered_certificates = NULL, *link;
 
@@ -1811,16 +1620,9 @@ smime_context_encrypt_sync (CamelCipherContext *context,
 	}
 	PORT_FreeArena (poolp, PR_FALSE);
 
-	/* NSS's streaming encoder wrote indefinite-length BER into ostream;
-	 * canonicalize it to definite-length DER before wrapping it up (see
-	 * sm_ber_to_der() for why). */
-	der_buffer = sm_ber_to_der (camel_stream_mem_get_byte_array (CAMEL_STREAM_MEM (ostream)));
-	der_stream = camel_stream_mem_new_with_byte_array (der_buffer);
-
 	dw = camel_data_wrapper_new ();
 	camel_data_wrapper_construct_from_stream_sync (
-		dw, der_stream, NULL, NULL);
-	g_object_unref (der_stream);
+		dw, ostream, NULL, NULL);
 	g_object_unref (ostream);
 	camel_data_wrapper_set_encoding (dw, CAMEL_TRANSFER_ENCODING_BINARY);
 
