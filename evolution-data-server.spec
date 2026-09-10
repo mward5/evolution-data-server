@@ -54,7 +54,7 @@
 
 Name: evolution-data-server
 Version: 3.60.2
-Release: 4.triplewrap5%{?dist}
+Release: 4.triplewrap7%{?dist}
 Summary: Backend data server for Evolution
 License: LGPL-2.0-or-later
 URL: https://gitlab.gnome.org/GNOME/evolution/-/wikis/home
@@ -520,6 +520,16 @@ find $RPM_BUILD_ROOT -name '*.so.*' -exec chmod +x {} \;
 %{_datadir}/installed-tests
 
 %changelog
+* Thu Sep 10 2026 Mike Ward <mward5@tinfoil-fedora.com> - 3.60.2-4.triplewrap7
+- Revert the definite-length DER canonicalization from triplewrap6; RFC 5652
+  permits the indefinite-length BER that NSS emits, and Gmail, Thunderbird,
+  iOS Mail and Exchange Online were all re-tested without it
+- Leaves the fork's only difference from stock evolution-data-server as the
+  one-line Content-Description on the S/MIME signature part
+
+* Mon Aug 31 2026 Mike Ward <mward5@tinfoil-fedora.com> - 3.60.2-4.triplewrap6
+- Canonicalize CMS signed/enveloped output to definite-length DER
+
 * Tue Aug 25 2026 Mike Ward <mward5@tinfoil-fedora.com> - 3.60.2-4.triplewrap5
 - Fix the release artifact layout, which stopped triplewrap4 publishing
 - Keep debug symbols in a separate artifact, out of the release
