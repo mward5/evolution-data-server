@@ -1,0 +1,3 @@
+01-noinst-libedbus-private.patch
+ubuntu_gettext_domain.patch
+0001-camel-smime-signature-content-description.patch

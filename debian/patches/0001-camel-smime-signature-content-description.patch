@@ -1,0 +1,129 @@
+Description: Content-Description on the S/MIME signature part
+Origin: https://github.com/mward5/evolution-data-server/tree/triple-wrap
+Author: Mike C. Ward <mward5@tinfoil-fedora.com>
+Forwarded: not-yet
+Last-Update: 2026-10-05
+
+diff --git a/src/camel/camel-mime-utils.c b/src/camel/camel-mime-utils.c
+index 160199293..c4ec7094d 100644
+--- a/src/camel/camel-mime-utils.c
++++ b/src/camel/camel-mime-utils.c
+@@ -594,7 +594,9 @@ camel_quoted_encode_step (guchar *in,
+ 				}
+ 			}
+ 
+-			if (camel_mime_is_qpsafe (c)) {
++			/* a literal tab is legal, but mail gateways re-encode
++			 * it, which breaks signatures over the encoded text */
++			if (camel_mime_is_qpsafe (c) && c != '\t') {
+ 				if (sofar > 74) {
+ 					*outptr++ = '=';
+ 					*outptr++ = '\n';
+@@ -602,7 +604,7 @@ camel_quoted_encode_step (guchar *in,
+ 				}
+ 
+ 				/* delay output of space gchar */
+-				if (c == ' ' || c == '\t') {
++				if (c == ' ') {
+ 					last = c;
+ 				} else {
+ 					*outptr++ = c;
+diff --git a/src/camel/camel-multipart-signed.c b/src/camel/camel-multipart-signed.c
+index 6335855b5..cfc3fede7 100644
+--- a/src/camel/camel-multipart-signed.c
++++ b/src/camel/camel-multipart-signed.c
+@@ -298,7 +298,7 @@ multipart_signed_write_to_stream_sync (CamelDataWrapper *data_wrapper,
+ 	}
+ 
+ 	/* first boundary */
+-	content = g_strdup_printf ("\n--%s\n", boundary);
++	content = g_strdup_printf ("%s--%s\n", preface ? "\n" : "", boundary);
+ 	count = camel_stream_write_string (
+ 		stream, content, cancellable, error);
+ 	g_free (content);
+@@ -453,7 +453,7 @@ multipart_signed_write_to_output_stream_sync (CamelDataWrapper *data_wrapper,
+ 	}
+ 
+ 	/* first boundary */
+-	content = g_strdup_printf ("\n--%s\n", boundary);
++	content = g_strdup_printf ("%s--%s\n", preface ? "\n" : "", boundary);
+ 	success = g_output_stream_write_all (
+ 		output_stream,
+ 		content, strlen (content),
+diff --git a/src/camel/camel-smime-context.c b/src/camel/camel-smime-context.c
+index 599e74a6c..ef111457c 100644
+--- a/src/camel/camel-smime-context.c
++++ b/src/camel/camel-smime-context.c
+@@ -498,6 +498,22 @@ fail:
+ 	return NULL;
+ }
+ 
++/* Higher wins: a bad signature, then a good one from a trusted signer */
++static gint
++sm_sign_status_rank (CamelCipherValiditySign status)
++{
++	switch (status) {
++	case CAMEL_CIPHER_VALIDITY_SIGN_UNKNOWN:
++		return 1;
++	case CAMEL_CIPHER_VALIDITY_SIGN_GOOD:
++		return 2;
++	case CAMEL_CIPHER_VALIDITY_SIGN_BAD:
++		return 3;
++	default:
++		return 0;
++	}
++}
++
+ static const gchar *
+ sm_status_description (NSSCMSVerificationStatus status,
+ 		       CamelCipherValiditySign *out_sign_status)
+@@ -678,6 +694,7 @@ sm_verify_cmsg (CamelCipherContext *context,
+ 	CamelCipherValiditySign sign_status = CAMEL_CIPHER_VALIDITY_SIGN_UNKNOWN;
+ 	CamelCipherValidity *valid;
+ 	GString *description;
++	gboolean have_signer = FALSE;
+ 
+ 	description = g_string_new ("");
+ 	valid = camel_cipher_validity_new ();
+@@ -773,6 +790,7 @@ sm_verify_cmsg (CamelCipherContext *context,
+ 				}
+ 
+ 				for (j = 0; j < nsigners; j++) {
++					CamelCipherValiditySign signer_status;
+ 					CERTCertificate *cert;
+ 					NSSCMSSignerInfo *si;
+ 					const gchar *status_description;
+@@ -783,7 +801,7 @@ sm_verify_cmsg (CamelCipherContext *context,
+ 					NSS_CMSSignedData_VerifySignerInfo (sigd, j, p->certdb, certUsageEmailSigner);
+ 
+ 					status = NSS_CMSSignerInfo_GetVerificationStatus (si);
+-					status_description = sm_status_description (status, &sign_status);
++					status_description = sm_status_description (status, &signer_status);
+ 
+ 					/* certificate trust is verified first; check the signature itself,
+ 					   because CAMEL_CIPHER_VALIDITY_SIGN_UNKNOWN means "valid signature,
+@@ -807,10 +825,15 @@ sm_verify_cmsg (CamelCipherContext *context,
+ 						/* now verify signature */
+ 						if (NSS_CMSSignerInfo_Verify (si, digest, contentType) != SECSuccess ||
+ 						    NSS_CMSSignerInfo_GetVerificationStatus (si) != NSSCMSVS_GoodSignature) {
+-							sign_status = CAMEL_CIPHER_VALIDITY_SIGN_BAD;
++							signer_status = CAMEL_CIPHER_VALIDITY_SIGN_BAD;
+ 						}
+ 					}
+ 
++					if (!have_signer || sm_sign_status_rank (signer_status) > sm_sign_status_rank (sign_status)) {
++						sign_status = signer_status;
++						have_signer = TRUE;
++					}
++
+ 					#if defined (NSS_VMAJOR) && defined (NSS_VMINOR) && (NSS_VMAJOR > 3 || (NSS_VMAJOR == 3 && NSS_VMINOR >= 89))
+ 					if (status == NSSCMSVS_BadSignature) {
+ 						if (PORT_GetError () == SEC_ERROR_SIGNATURE_ALGORITHM_DISABLED) {
+@@ -1086,6 +1109,7 @@ smime_context_sign_sync (CamelCipherContext *context,
+ 
+ 		camel_mime_part_set_filename (sigpart, "smime.p7s");
+ 		camel_mime_part_set_disposition (sigpart, "attachment");
++		camel_mime_part_set_description (sigpart, "S/MIME Cryptographic Signature");
+ 		camel_mime_part_set_encoding (sigpart, CAMEL_TRANSFER_ENCODING_BASE64);
+ 
+ 		mps = camel_multipart_signed_new ();

@@ -1,0 +1,6 @@
+usr/include/evolution-data-server/libedataserverui
+usr/lib/*/libedataserverui-1.2.so
+usr/lib/*/pkgconfig/libedataserverui-1.2.pc
+usr/share/gir-1.0/EDataServerUI-1.2.gir
+usr/share/vala/vapi/libedataserverui-1.2.deps
+usr/share/vala/vapi/libedataserverui-1.2.vapi
