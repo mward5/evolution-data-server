@@ -498,14 +498,14 @@ fail:
 	return NULL;
 }
 
-/* Higher is worse */
+/* Higher wins: a bad signature, then a good one from a trusted signer */
 static gint
-sm_sign_status_severity (CamelCipherValiditySign status)
+sm_sign_status_rank (CamelCipherValiditySign status)
 {
 	switch (status) {
-	case CAMEL_CIPHER_VALIDITY_SIGN_NEED_PUBLIC_KEY:
-		return 1;
 	case CAMEL_CIPHER_VALIDITY_SIGN_UNKNOWN:
+		return 1;
+	case CAMEL_CIPHER_VALIDITY_SIGN_GOOD:
 		return 2;
 	case CAMEL_CIPHER_VALIDITY_SIGN_BAD:
 		return 3;
@@ -829,8 +829,7 @@ sm_verify_cmsg (CamelCipherContext *context,
 						}
 					}
 
-					/* One failing signer fails the signature */
-					if (!have_signer || sm_sign_status_severity (signer_status) > sm_sign_status_severity (sign_status)) {
+					if (!have_signer || sm_sign_status_rank (signer_status) > sm_sign_status_rank (sign_status)) {
 						sign_status = signer_status;
 						have_signer = TRUE;
 					}
