@@ -1,3 +1,54 @@
+evolution-data-server (3.60.2-4+triplewrap9) resolute; urgency=medium
+
+  * Encode tabs in quoted-printable text, and do not write an empty
+    preamble before a new multipart/signed. A mail gateway (Mimecast)
+    rewrote both in transit, which broke the S/MIME signature.
+    Submitted upstream as GNOME/evolution-data-server!257.
+  * Let a trusted signer's good signature beat an untrusted co-signer,
+    following review of GNOME/evolution-data-server!256. A bad
+    signature from any signer still makes the signature bad.
+
+ -- Mike Ward <mward5@tinfoil-fedora.com>  Mon, 05 Oct 2026 09:53:16 -0700
+
+evolution-data-server (3.60.2-4+triplewrap8) resolute; urgency=medium
+
+  * Report the worst result of an S/MIME signature with several signers.
+    Each signer's result overwrote the previous one, so a broken or
+    untrusted signature was hidden by a good one checked after it and the
+    message showed as validly signed. Submitted upstream as
+    GNOME/evolution-data-server!256.
+
+ -- Mike Ward <mward5@tinfoil-fedora.com>  Fri, 02 Oct 2026 07:23:09 -0700
+
+evolution-data-server (3.60.2-4+triplewrap7) resolute; urgency=medium
+
+  * Revert the definite-length DER canonicalization from triplewrap6. It
+    was written while investigating why Thunderbird would not show
+    triple-wrapped mail as signed, and did not fix that -- a composer
+    change in Evolution did, seven seconds later in the history. RFC 5652
+    permits the indefinite-length BER that NSS emits: signed and
+    authenticated attributes are the only parts of CMS that require DER.
+  * Re-tested on this build with the canonicalization gone: Gmail,
+    Thunderbird, iOS Mail and Exchange Online all decrypt and verify a
+    triple-wrapped message carrying NSS's native BER, so nothing required
+    it. The 200 lines of hand-written ASN.1 re-encoding are not worth
+    carrying for wire-format parity alone.
+  * This leaves the fork's only difference from stock
+    evolution-data-server as the one-line Content-Description on the
+    S/MIME signature part.
+
+ -- Mike Ward <mward5@tinfoil-fedora.com>  Thu, 10 Sep 2026 15:25:06 -0700
+
+evolution-data-server (3.60.2-4+triplewrap6) resolute; urgency=medium
+
+  * Canonicalize CMS signed/enveloped output to definite-length DER.
+    NSS's streaming CMS encoder emits indefinite-length BER, which is
+    valid CMS but not what every S/MIME verifier expects; narrows to
+    the stricter DER subset for closer wire-format parity with other
+    implementations.
+
+ -- Mike Ward <mward5@tinfoil-fedora.com>  Mon, 31 Aug 2026 11:50:02 -0700
+
 evolution-data-server (3.60.2-4+triplewrap5) resolute; urgency=medium
 
   * Fix the release artifact layout, which stopped v3.60.2-triplewrap4
