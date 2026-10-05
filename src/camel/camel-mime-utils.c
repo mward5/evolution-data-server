@@ -594,7 +594,9 @@ camel_quoted_encode_step (guchar *in,
 				}
 			}
 
-			if (camel_mime_is_qpsafe (c)) {
+			/* a literal tab is legal, but mail gateways re-encode
+			 * it, which breaks signatures over the encoded text */
+			if (camel_mime_is_qpsafe (c) && c != '\t') {
 				if (sofar > 74) {
 					*outptr++ = '=';
 					*outptr++ = '\n';
@@ -602,7 +604,7 @@ camel_quoted_encode_step (guchar *in,
 				}
 
 				/* delay output of space gchar */
-				if (c == ' ' || c == '\t') {
+				if (c == ' ') {
 					last = c;
 				} else {
 					*outptr++ = c;
