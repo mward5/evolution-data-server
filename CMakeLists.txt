@@ -4,14 +4,14 @@ cmake_minimum_required(VERSION 3.15)
 cmake_policy(VERSION 3.15)
 
 project(evolution-data-server
-	VERSION 3.60.2
+	VERSION 3.62.1
 	LANGUAGES C CXX)
 set(PROJECT_BUGREPORT "https://gitlab.gnome.org/GNOME/evolution-data-server/issues/")
 
 # Base Version: This is for API/version tracking for things like
 # D-Bus server files. This should always be the major/minor of
 # the stable version or stable version to be.
-set(BASE_VERSION 3.60)
+set(BASE_VERSION 3.62)
 
 # This number is meaningless, but we're now stuck with it in our
 # library names for backward compatibility.
@@ -49,7 +49,7 @@ set(OAUTH2_RESPONSE_DBUS_SERVICE_NAME	"org.gnome.evolution.dataserver.OAuth2Resp
 # ******************************
 # Library versioning
 # ******************************
-set(LIBCAMEL_CURRENT 67)
+set(LIBCAMEL_CURRENT 68)
 set(LIBCAMEL_REVISION 0)
 set(LIBCAMEL_AGE 0)
 
@@ -57,7 +57,7 @@ set(LIBEBACKEND_CURRENT 11)
 set(LIBEBACKEND_REVISION 0)
 set(LIBEBACKEND_AGE 0)
 
-set(LIBEDATASERVER_CURRENT 27)
+set(LIBEDATASERVER_CURRENT 28)
 set(LIBEDATASERVER_REVISION 0)
 set(LIBEDATASERVER_AGE 0)
 
@@ -157,6 +157,18 @@ include(CheckTypeSize)
 # Project custom modules
 include(PrintableOptions)
 
+# Set a default build type if none was specified
+set(default_build_type "Release")
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+  set(default_build_type "Debug")
+endif()
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  message(STATUS "Setting build type to ${default_build_type} as none was specified.")
+  set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE STRING "Choose the type of build." FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+endif()
+
+add_printable_variable_bare(CMAKE_BUILD_TYPE)
 add_printable_variable(LIB_SUFFIX "Library directory suffix, usually defined to '64' for x86_64 systems" "")
 add_printable_variable_bare(CMAKE_INSTALL_PREFIX)
 add_printable_variable_path(BIN_INSTALL_DIR "Install directory for binary files, defaults to CMAKE_INSTALL_PREFIX/bin" "")

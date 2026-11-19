@@ -1,22 +1,36 @@
-/* camel-url.c : utility functions to parse URLs
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Dan Winship <danw@ximian.com>
- *          Jeffrey Stedfast <fejj@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Dan Winship <danw@ximian.com>
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
+
+/**
+ * CamelURL:
+ *
+ * URI parsing, encoding, and manipulation.
+ *
+ * #CamelURL provides a URI parser, encoder, and logic for merging relative
+ * URIs with base URIs. When a URI string is parsed, it is split into its
+ * constituent parts and stored in a decoded form:
+ * protocol, user, authentication mechanism, password, host, port, path,
+ * query parameters, query string, and fragment.
+ *
+ * Field values are read directly from the struct members, but should only
+ * be written via the camel_url_set_*() accessor functions, which manage
+ * memory correctly.
+ *
+ * camel_url_to_string() serialises a #CamelURL back to a string,
+ * with optional flags to hide sensitive fields such as URI parameters
+ * (e.g. %CAMEL_URL_HIDE_PARAMS) or authentication details
+ * (e.g. %CAMEL_URL_HIDE_AUTH).
+ *
+ * camel_url_new_with_base() creates a new URI by resolving a relative URI
+ * string against a base #CamelURL, following all relevant RFC rules.
+ *
+ * camel_url_encode() and camel_url_decode() handle percent-encoding
+ * (%%XX escaping) of URI components.
+ **/
 
 #include "evolution-data-server-config.h"
 

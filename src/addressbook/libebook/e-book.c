@@ -1,21 +1,9 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- * Copyright (C) 2006 OpenedHand Ltd
- * Copyright (C) 2009 Intel Corporation
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Ross Burton <ross@linux.intel.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-FileCopyrightText: (C) 2006 OpenedHand Ltd
+ * SPDX-FileCopyrightText: (C) 2009 Intel Corporation
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Ross Burton <ross@linux.intel.com>
  */
 
 /* e-book deprecated since 3.2, use e-book-client instead */
@@ -656,6 +644,8 @@ get_required_fields_reply (GObject *source_object,
 		g_strfreev (strv);
 	}
 
+	g_free (prop_value);
+
 	if (cb != NULL && error == NULL)
 		cb (data->book, E_BOOK_ERROR_OK, elist, data->closure);
 	if (cb != NULL && error != NULL)
@@ -840,6 +830,8 @@ get_supported_fields_reply (GObject *source_object,
 		}
 		g_strfreev (strv);
 	}
+
+	g_free (prop_value);
 
 	if (cb != NULL && error == NULL)
 		cb (data->book, E_BOOK_ERROR_OK, elist, data->closure);

@@ -1,16 +1,5 @@
 /*
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include <stdlib.h>
@@ -50,6 +39,7 @@ verify_commit (EContact *contact)
 	g_assert_true (e_vcard_attribute_is_single_valued (attr));
 	email_value = e_vcard_attribute_get_value (attr);
 	g_assert_true (!g_strcmp0 (email_value, EMAIL_ADD));
+	g_free (email_value);
 }
 
 static gboolean
@@ -59,6 +49,7 @@ commit_verify_cb (EBookTestClosure *closure)
 
 	contact = ebook_test_utils_book_get_contact (book, uid);
 	verify_commit (contact);
+	g_clear_object (&contact);
 
 	g_main_loop_quit ((GMainLoop *) (closure->user_data));
 

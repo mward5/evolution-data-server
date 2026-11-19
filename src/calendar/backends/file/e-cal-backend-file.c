@@ -1,23 +1,10 @@
-/* Evolution calendar - iCalendar file backend
- *
- * Copyright (C) 1993 Free Software Foundation, Inc.
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Federico Mena-Quintero <federico@ximian.com>
- *          Rodrigo Moya <rodrigo@ximian.com>
- *          Jan Brittenson <bson@gnu.ai.mit.edu>
+/*
+ * SPDX-FileCopyrightText: (C) 1993 Free Software Foundation, Inc.
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Federico Mena-Quintero <federico@ximian.com>
+ * SPDX-FileContributor: Rodrigo Moya <rodrigo@ximian.com>
+ * SPDX-FileContributor: Jan Brittenson <bson@gnu.ai.mit.edu>
  */
 
 #include "evolution-data-server-config.h"
@@ -85,19 +72,13 @@ struct _ECalBackendFilePrivate {
 
 	/* guards refresh members */
 	GMutex refresh_lock;
-	/* set to TRUE to indicate thread should stop */
-	gboolean refresh_thread_stop;
-	/* set to TRUE when the refresh thread is running;
-	   it can happen that the refresh_cond is set, but the thread is gone */
-	gboolean refresh_thread_running;
-	/* condition for refreshing, not NULL when thread exists */
-	GCond *refresh_cond;
-	/* cond to know the refresh thread gone */
-	GCond *refresh_gone_cond;
 	/* increased when backend saves the file */
 	guint refresh_skip;
 
 	GFileMonitor *refresh_monitor;
+	GCancellable *refresh_cancellable;
+	guint refresh_timeout_id;
+	guint64 refresh_last_modified;
 
 	/* Just an incremental number to ensure uniqueness across revisions */
 	guint revision_counter;
@@ -163,7 +144,6 @@ save_file_when_idle (gpointer user_data)
 	g_rec_mutex_lock (&priv->idle_save_rmutex);
 	if (!priv->is_dirty || !writable) {
 		priv->dirty_idle_id = 0;
-		priv->is_dirty = FALSE;
 		g_rec_mutex_unlock (&priv->idle_save_rmutex);
 		return FALSE;
 	}
@@ -909,6 +889,7 @@ scan_vcalendar (ECalBackendFile *cbfile)
 				g_object_ref (icomp);
 				i_cal_object_set_owner (I_CAL_OBJECT (icomp), G_OBJECT (priv->vcalendar));
 
+				e_cal_util_sanitize_untrusted (icomp);
 				check_dup_uid (cbfile, comp);
 
 				add_component (cbfile, comp, FALSE);
@@ -963,91 +944,103 @@ uri_to_path (ECalBackend *backend)
 	return filename;
 }
 
-static gpointer
-refresh_thread_func (gpointer data)
+static void
+refresh_custom_op_cb (ECalBackend *cal_backend,
+                      gpointer user_data,
+                      GCancellable *cancellable,
+                      GError **error)
 {
-	ECalBackendFile *cbfile = data;
+	ECalBackendFile *cbfile = E_CAL_BACKEND_FILE (cal_backend);
 	ECalBackendFilePrivate *priv;
 	ESource *source;
 	ESourceLocal *extension;
-	GFileInfo *info;
 	GFile *file;
-	const gchar *extension_name;
-	guint64 last_modified, modified;
-
-	g_return_val_if_fail (cbfile != NULL, NULL);
-	g_return_val_if_fail (E_IS_CAL_BACKEND_FILE (cbfile), NULL);
+	GFileInfo *info;
+	guint64 modified;
 
 	priv = cbfile->priv;
 
-	extension_name = E_SOURCE_EXTENSION_LOCAL_BACKEND;
-	source = e_backend_get_source (E_BACKEND (cbfile));
-	extension = e_source_get_extension (source, extension_name);
+	g_rec_mutex_lock (&priv->idle_save_rmutex);
 
-	/* This returns a newly-created GFile. */
+	if (priv->refresh_skip > 0) {
+		priv->refresh_skip--;
+		g_rec_mutex_unlock (&priv->idle_save_rmutex);
+		goto done;
+	}
+
+	if (priv->is_dirty) {
+		if (priv->dirty_idle_id) {
+			g_source_remove (priv->dirty_idle_id);
+			priv->dirty_idle_id = 0;
+		}
+		save_file_when_idle (cbfile);
+		priv->refresh_skip = 0;
+	}
+
+	g_rec_mutex_unlock (&priv->idle_save_rmutex);
+
+	source = e_backend_get_source (E_BACKEND (cbfile));
+	extension = e_source_get_extension (source, E_SOURCE_EXTENSION_LOCAL_BACKEND);
 	file = e_source_local_dup_custom_file (extension);
 	if (!file) {
-		g_mutex_lock (&priv->refresh_lock);
-		priv->refresh_thread_running = FALSE;
-		g_cond_signal (priv->refresh_gone_cond);
-		g_mutex_unlock (&priv->refresh_lock);
-
-		return NULL;
+		goto done;
 	}
 
-	info = g_file_query_info (
-		file, G_FILE_ATTRIBUTE_TIME_MODIFIED,
-		G_FILE_QUERY_INFO_NONE, NULL, NULL);
-	if (info) {
-		last_modified = g_file_info_get_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_MODIFIED);
-		g_object_unref (info);
-	} else {
-		last_modified = 0;
+	info = g_file_query_info (file, G_FILE_ATTRIBUTE_TIME_MODIFIED, G_FILE_QUERY_INFO_NONE, cancellable, NULL);
+	if (!info) {
+		priv->refresh_last_modified = 0;
+		g_clear_object (&file);
+		goto done;
 	}
+
+	modified = g_file_info_get_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_MODIFIED);
+	g_clear_object (&info);
+	g_clear_object (&file);
+
+	if (modified != priv->refresh_last_modified &&
+	    !g_cancellable_is_cancelled (cancellable)) {
+		priv->refresh_last_modified = modified;
+		e_cal_backend_file_reload (cbfile, NULL);
+	}
+
+ done:
+	g_mutex_lock (&priv->refresh_lock);
+	if (priv->refresh_cancellable == cancellable) {
+		g_clear_object (&priv->refresh_cancellable);
+	}
+	g_mutex_unlock (&priv->refresh_lock);
+}
+
+static gboolean
+refresh_timeout_cb (gpointer user_data)
+{
+	ECalBackendFile *cbfile = user_data;
+	ECalBackendFilePrivate *priv;
+
+	priv = cbfile->priv;
 
 	g_mutex_lock (&priv->refresh_lock);
-	while (!priv->refresh_thread_stop) {
-		g_cond_wait (priv->refresh_cond, &priv->refresh_lock);
+	priv->refresh_timeout_id = 0;
 
-		g_rec_mutex_lock (&priv->idle_save_rmutex);
-
-		if (priv->refresh_skip > 0) {
-			priv->refresh_skip--;
-			g_rec_mutex_unlock (&priv->idle_save_rmutex);
-			continue;
-		}
-
-		if (priv->is_dirty) {
-			/* save before reload, if dirty */
-			if (priv->dirty_idle_id) {
-				g_source_remove (priv->dirty_idle_id);
-				priv->dirty_idle_id = 0;
-			}
-			save_file_when_idle (cbfile);
-			priv->refresh_skip = 0;
-		}
-
-		g_rec_mutex_unlock (&priv->idle_save_rmutex);
-
-		info = g_file_query_info (file, G_FILE_ATTRIBUTE_TIME_MODIFIED, G_FILE_QUERY_INFO_NONE, NULL, NULL);
-		if (!info)
-			break;
-
-		modified = g_file_info_get_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_MODIFIED);
-		g_object_unref (info);
-
-		if (modified != last_modified) {
-			last_modified = modified;
-			e_cal_backend_file_reload (cbfile, NULL);
-		}
+	if (!priv->refresh_monitor) {
+		g_mutex_unlock (&priv->refresh_lock);
+		return G_SOURCE_REMOVE;
 	}
 
-	g_object_unref (file);
-	priv->refresh_thread_running = FALSE;
-	g_cond_signal (priv->refresh_gone_cond);
+	if (priv->refresh_cancellable) {
+		g_cancellable_cancel (priv->refresh_cancellable);
+		g_clear_object (&priv->refresh_cancellable);
+	}
+
+	priv->refresh_cancellable = g_cancellable_new ();
+
 	g_mutex_unlock (&priv->refresh_lock);
 
-	return NULL;
+	e_cal_backend_schedule_custom_operation (
+		E_CAL_BACKEND (cbfile), priv->refresh_cancellable,
+		refresh_custom_op_cb, NULL, NULL);
+
+	return G_SOURCE_REMOVE;
 }
 
 static void
@@ -1055,10 +1048,26 @@ custom_file_changed (GFileMonitor *monitor,
                      GFile *file,
                      GFile *other_file,
                      GFileMonitorEvent event_type,
-                     ECalBackendFilePrivate *priv)
+                     ECalBackendFile *cbfile)
 {
-	if (priv->refresh_cond)
-		g_cond_signal (priv->refresh_cond);
+	ECalBackendFilePrivate *priv;
+
+	priv = cbfile->priv;
+
+	g_mutex_lock (&priv->refresh_lock);
+
+	if (priv->refresh_cancellable) {
+		g_cancellable_cancel (priv->refresh_cancellable);
+		g_clear_object (&priv->refresh_cancellable);
+	}
+
+	if (priv->refresh_timeout_id != 0) {
+		g_source_remove (priv->refresh_timeout_id);
+	}
+
+	priv->refresh_timeout_id = g_timeout_add_seconds (2, refresh_timeout_cb, cbfile);
+
+	g_mutex_unlock (&priv->refresh_lock);
 }
 
 static void
@@ -1076,8 +1085,8 @@ prepare_refresh_data (ECalBackendFile *cbfile)
 
 	g_mutex_lock (&priv->refresh_lock);
 
-	priv->refresh_thread_stop = FALSE;
 	priv->refresh_skip = 0;
+	priv->refresh_last_modified = 0;
 
 	source = e_backend_get_source (E_BACKEND (cbfile));
 
@@ -1088,31 +1097,27 @@ prepare_refresh_data (ECalBackendFile *cbfile)
 
 	if (custom_file != NULL) {
 		GError *error = NULL;
+		GFileInfo *info;
 
 		priv->refresh_monitor = g_file_monitor_file (
-			custom_file, G_FILE_MONITOR_WATCH_MOUNTS, NULL, &error);
+			custom_file, G_FILE_MONITOR_WATCH_MOUNTS | G_FILE_MONITOR_WATCH_MOVES, NULL, &error);
 
 		if (error == NULL) {
 			g_signal_connect (
 				priv->refresh_monitor, "changed",
-				G_CALLBACK (custom_file_changed), priv);
+				G_CALLBACK (custom_file_changed), cbfile);
 		} else {
 			g_warning ("%s", error->message);
 			g_error_free (error);
 		}
 
-		g_object_unref (custom_file);
-	}
+		info = g_file_query_info (custom_file, G_FILE_ATTRIBUTE_TIME_MODIFIED, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+		if (info) {
+			priv->refresh_last_modified = g_file_info_get_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_MODIFIED);
+			g_clear_object (&info);
+		}
 
-	if (priv->refresh_monitor) {
-		GThread *thread;
-
-		priv->refresh_cond = g_new0 (GCond, 1);
-		priv->refresh_gone_cond = g_new0 (GCond, 1);
-		priv->refresh_thread_running = TRUE;
-
-		thread = g_thread_new (NULL, refresh_thread_func, cbfile);
-		g_thread_unref (thread);
+		g_clear_object (&custom_file);
 	}
 
 	g_mutex_unlock (&priv->refresh_lock);
@@ -1129,25 +1134,20 @@ free_refresh_data (ECalBackendFile *cbfile)
 
 	g_mutex_lock (&priv->refresh_lock);
 
-	g_clear_object (&priv->refresh_monitor);
-
-	if (priv->refresh_cond) {
-		priv->refresh_thread_stop = TRUE;
-		g_cond_signal (priv->refresh_cond);
-
-		while (priv->refresh_thread_running) {
-			g_cond_wait (priv->refresh_gone_cond, &priv->refresh_lock);
-		}
-
-		g_cond_clear (priv->refresh_cond);
-		g_free (priv->refresh_cond);
-		priv->refresh_cond = NULL;
-		g_cond_clear (priv->refresh_gone_cond);
-		g_free (priv->refresh_gone_cond);
-		priv->refresh_gone_cond = NULL;
+	if (priv->refresh_timeout_id) {
+		g_source_remove (priv->refresh_timeout_id);
+		priv->refresh_timeout_id = 0;
 	}
 
+	if (priv->refresh_cancellable) {
+		g_cancellable_cancel (priv->refresh_cancellable);
+		g_clear_object (&priv->refresh_cancellable);
+	}
+
+	g_clear_object (&priv->refresh_monitor);
+
 	priv->refresh_skip = 0;
+	priv->refresh_last_modified = 0;
 
 	g_mutex_unlock (&priv->refresh_lock);
 }
@@ -1498,7 +1498,7 @@ e_cal_backend_file_open (ECalBackendSync *backend,
 
 	/* Claim a successful open if we are already open */
 	if (priv->path && priv->comp_uid_hash) {
-		/* Success */
+		writable = e_cal_backend_get_writable (E_CAL_BACKEND (backend));
 		goto done;
 	}
 
@@ -1518,18 +1518,16 @@ e_cal_backend_file_open (ECalBackendSync *backend,
 	}
 
 	if (!err) {
-		if (writable) {
-			ESource *source;
+		ESource *source;
 
-			source = e_backend_get_source (E_BACKEND (backend));
+		source = e_backend_get_source (E_BACKEND (backend));
 
-			g_signal_connect (
-				source, "changed",
-				G_CALLBACK (source_changed_cb), backend);
+		g_signal_connect (
+			source, "changed",
+			G_CALLBACK (source_changed_cb), backend);
 
-			if (!get_source_writable (E_BACKEND (backend)))
-				writable = FALSE;
-		}
+		if (writable && !get_source_writable (E_BACKEND (backend)))
+			writable = FALSE;
 	}
 
 	g_free (str_uri);
@@ -3659,6 +3657,8 @@ e_cal_backend_file_receive_objects (ECalBackendSync *backend,
 		if (!comp)
 			continue;
 
+		e_cal_util_sanitize_untrusted (subcomp);
+
 		/* Set the created and last modified times on the component, if not there already */
 		current = i_cal_time_new_current_with_zone (i_cal_timezone_get_utc_timezone ());
 
@@ -3851,6 +3851,23 @@ cal_backend_file_email_address_changed_cb (GObject *object,
 }
 
 static void
+cal_backend_file_writable_changed_cb (GObject *object,
+				      GParamSpec *param,
+				      gpointer user_data)
+{
+	ECalBackendFile *cbfile = user_data;
+	ECalBackendFilePrivate *priv = cbfile->priv;
+
+	if (!e_cal_backend_get_writable (E_CAL_BACKEND (cbfile)))
+		return;
+
+	g_rec_mutex_lock (&priv->idle_save_rmutex);
+	if (priv->is_dirty && !priv->dirty_idle_id)
+		save (cbfile, FALSE);
+	g_rec_mutex_unlock (&priv->idle_save_rmutex);
+}
+
+static void
 cal_backend_file_constructed (GObject *object)
 {
 	ECalBackend *backend;
@@ -3918,6 +3935,9 @@ cal_backend_file_constructed (GObject *object)
 
 	g_signal_connect_object (local_extension, "notify::email-address",
 		G_CALLBACK (cal_backend_file_email_address_changed_cb), backend, 0);
+
+	g_signal_connect_object (backend, "notify::writable",
+		G_CALLBACK (cal_backend_file_writable_changed_cb), backend, 0);
 }
 
 static void

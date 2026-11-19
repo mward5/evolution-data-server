@@ -1,32 +1,200 @@
-Evolution-Data-Server 3.60.2 2026-05-22
+Evolution-Data-Server 3.62.1 2026-10-09
 ---------------------------------------
 
 Bug Fixes:
-	I#637 - IMAPx: Sent folder reverts to default with iCloud email and Quick Resync
-	evo-I#3302 - Truncated file stored in the (mail) cache
+	I#661 - OAuth2: Resolve collection as credential source on the token path (Tobias Mueller)
+	I#666 - OAuth2: Read the 'code' only from the redirect URI in the wizard
+	I#667 - LDAP: Support Jabber attribute (RFC 8284)
+	I#668 - CalDAV: Fails to populate local cache for iCloud servers
+	I#672 - Calendar: Limit which local files are inlined in components
+	M!249 - e-oauth2-service: Treat an empty refresh token as absent (Benjamin Herrenschmidt)
+	M!250 - Camel: Set a Content-Description on the S/MIME signature part (Mike C. Ward)
+	M!251 - test-camel-provider-imapx: Replace strcasestr() with camel_strstrcase() (Achill Gilgenast)
+	M!257 - Camel: Do not write an empty preamble for a new multipart/signed (Mike C. Ward)
+	M!257 - Camel: Encode tabs in quoted-printable text (Mike C. Ward)
 
 Miscellaneous:
-	e-ms-oapxbc: Simplify error handling in MS-OAPXBC OIDC extension
-	e-ms-oapxbc: Fix error handling of broker response
-	e-ms-oapxbc: Align D-Bus parameters with sso-mib (Felix Moessbauer)
-	e-ms-oapxbc: Add support for broker versions > 2.0.1 (Felix Moessbauer)
-	Do not lock SExp object in data book/cal views start
-	e-book-meta-backend: Handle data: URI-s in PHOTO/LOGO
-	Calendar: Use icaldurationtype_as_utc_seconds() for libical 4.x (Antonio Rojas)
-	OAuth2: Use its own error domain and add camel_util_is_network_error()
+	LDAP: Avoid runtime warning on unrecognized known search query
+	test-camel-provider-imapx: Replace inet_addr() with inet_pton()
+	ESourceRegistry: Try harder with object manager thread's main context flush
 
 Translations:
-	Christian Kirbach (de)
+	Efstathios Iosifidis (el)
+	Patrik Sivek (cs)
+	Roy-Magne Mo (nn)
 
-Evolution-Data-Server 3.60.1 2026-04-10
+Evolution-Data-Server 3.62.0 2026-09-11
 ---------------------------------------
 
 Bug Fixes:
+	I#660 - GOA EWS: Do not require OABUrl in autodiscover
+	I#662 - EBackend: Document how OAuth2 sources should ask to be authenticated (Tobias Mueller)
+	I#665 - CalDAV: Ignore Bad Request (400) on overwrite
+	M!243 - ESourceRegistry: Name the credentials source in failed-lookup debug message (Tobias Mueller)
+
+Translations:
+	Alan Mortensen (da)
+	Aurimas Černius (lt)
+	Balázs Úr (hu)
+	Baurzhan Muftakhidinov (kk)
+	Emin Tufan Çetin (tr)
+	Juliano de Souza Camargo (pt_BR)
+	Kjartan Maraas (nb)
+
+Evolution-Data-Server 3.61.3 2026-08-28
+---------------------------------------
+
+Bug Fixes:
+	I#1 - Use gnome-shell-calendar-server for Reminders in GNOME
+	I#602 - IMAPx: Sometimes removes message from local summary in error
+	I#633 - NNTP: Add an option to disconnect on idle
+	I#648 - IMAPx: Use CHANGEDSINCE for UID FETCH with QRESYNC
+	M!236 - Camel: Add NNTP unit tests
+	M!240 - Camel: Add POP3 provider unit tests
+	M!241 - OAuth2: Always set GError when getting an access token fails (David Woodhouse)
+	M!242 - tests: Harden backend close on the factory side
+	ews-I#344 - ESoupSession: Set timeout for error body read
+
+Miscellaneous:
+	SetupBuildFlags.cmake: Add `-Wunused-function`
+	IMAPx: Refresh folder in single-client mode on message count mismatch
+	NNTP: Enhance unit tests to optionally run also during `make test`
+	IMAPx: Add STARTTLS/TLS connection tests to the unit tests
+	IMAPx: Fix a memory leak
+	ECalBackendFile: Improve tracking of backend's 'writable' state
+	ESource: Claim ESource changed when D-Bus interfaces were added/removed
+	Correct some gtk-doc warnings in the developer comments
+
+Translations:
+	Anders Jonsson (sv)
+	Asier Saratsua Garmendia (eu)
+	Aurimas Černius (lt)
+	Ekaterine Papava (ka)
+	Guillaume Bernard (fr)
+	Martin (sl)
+	Yuri Chornoivan (uk)
+
+Evolution-Data-Server 3.61.2 2026-07-31
+---------------------------------------
+
+Bug Fixes:
+	I#104 - LDAP: Support Simple Paged Results Control (RFC 2696) (John Cardullo)
+	I#132 - Implement IMAP4 Multimailbox SEARCH Extension (John Cardullo)
+	I#650 - Camel: Real junk folder does not count unread junk-marked messages
+	I#651 - e_cal_util_init_recur_task_sync: Due date incorrectly reset
+	I#653 - camel-lock-helper: No follow symlink on lock time change
+	M!227 - Correct some issues found by static analyzer (Federico Mena Quintero)
+	M!230 - Fix memory leaks detected by LeakSanitizer in CI
+	M!231 - CI: Run IMAPx tests also under Cyrus server
+	M!232 - CI: Make the sanitizer job fail on errors (Federico Mena Quintero)
+	M!233 - e-ms-oapc: fix prt_sso_request (Benedikt Niedermayr)
+	M!235 - e-ms-oapxbc: Microsoft Identity Broker v3 fixes (Konrad Schwarz)
+	evo-I#2142 - ESourceSelectable: Add 'groups' property (IGS_GIT)
+	evo-I#3345 - source-registry: Deadlock when setting up m365 GOA account
+
+Miscellaneous:
+	Camel: Fix a memory leak after folder unsubscribe/deletion
+	IMAPx: Fix a memory leak in imapx_update_store_summary()
+	camel: Add IMAPx provider integration tests
+	ESource: Schedule D-Bus object change signal notification in idle
+	camel-iconv: Treat "gb2313" charset as "gb18030"
+
+Translations:
+	Aurimas Aurimas Černius (lt)
+	Baurzhan Muftakhidinov (kk)
+	burns (pt_BR)
+	Marcel Mrówka (pl)
+	Martin (sl)
+	Sabri Ünal (tr)
+
+Evolution-Data-Server 3.61.1 2026-06-26
+---------------------------------------
+
+Bug Fixes:
+	I#143 - WebDAV: Implement sync-collection (RFC 6578)
+	I#220 - Allow message body indexing for local accounts again
+	I#510 - goa: Fix a race when reading accounts after start
+	I#630 - nntp: Chunk OVER requests with adaptive retry and auto-reconnect (Mikhail Gavrilov)
 	I#632 - nntp: Fix GSocket ref leak in stream timeout helpers (Mikhail Gavrilov)
+	I#634 - Maildir: Prevent creating folders of a similar name
+	I#637 - IMAPx: Sent folder reverts to default with iCloud email and Quick Resync
+	I#643 - Camel: Clean up provider conf entries definitions
+	I#644 - Maildir: Prefer flags from the file name (externally modified)
+	I#645 - OAuth2: Correct when using collection ESource for child sources
+	I#647 - Calendar: Atomic write breaks .ics file change monitoring
+	M!207 - camel: Use XDG_DATA_HOME for nssdb path (André)
+	M!222 - Make CMAKE_BUILD_TYPE enumeration for cmake-gui (Дилян Палаузов)
+	M!223 - CI: Avoid extra path in cmake invocation (Дилян Палаузов)
+	M!224 - Remove unneeded GLIB_CHECK_VERSION macros (Дилян Палаузов)
+	evo-I#538 - GOA: Change how GOA accounts have set OAuth2 support
+	evo-I#2624 - Add per-account composer mode property to ESourceMailComposition
+	evo-I#3302 - Truncated file stored in the (mail) cache
+	evo-I#3322 - IMAP: Add "Manage subscriptions" into "Receiving options"
+	evo-I#3344 - ECredentialsPrompter: Inherit modality from the parent window
 
 Miscellaneous:
 	nntp: Rename nntp_get_stream_socket() to nntp_ref_stream_socket()
 	ESoupSession: Correct e_soup_session_get_authentication_requires_credentials()
+	Remove function declarations with no implementation (Corentin Noël)
+	e-gdata-session: Ensure soup message body is filled on retry
+	CamelStoreSearch: Remove dead code (Corentin Noël)
+	CamelStreamProcess: Handle the errno before doing other system calls (Corentin Noël)
+	CamelSmtpTransport: Fix a potential double-free error (Corentin Noël)
+	camel: Add documentation (Corentin Noël)
+	camel: Fix DIGEST-MD5 setting authenticated on rspauth mismatch
+	camel: Fix off-by-one OOB read in RFC 2047 quoted_decode
+	e-oauth2-service: Do not log secret contents on JSON parse failure
+	camel: Fix shell command injection in NTLM SASL authentication
+	pop3: Add maximum line buffer size to prevent unbounded memory growth
+	smtp: Sanitize ENVID parameter to prevent SMTP command injection
+	pop3: Reject credentials containing CRLF to prevent command injection
+	smtp: Fix heap out-of-bounds read in smtp_decode_status_code
+	ESoupSession: Reject HTTPS-to-HTTP redirects
+	camel: Add MIME nesting depth limit to prevent stack exhaustion
+	e-oauth2-service: Add state parameter to OAuth2 authorization requests
+	camel: Add size limits on MIME header blocks and body parts
+	carddav: Validate photo/logo URI origin to prevent SSRF
+	e-ms-oapxbc: Simplify error handling in MS-OAPXBC OIDC extension (Felix Moessbauer)
+	e-ms-oapxbc: Fix error handling of broker response (Felix Moessbauer)
+	e-ms-oapxbc: Align D-Bus parameters with sso-mib (Felix Moessbauer)
+	e-ms-oapxbc: Add support for broker versions > 2.0.1 (Felix Moessbauer)
+	Fix some compiler warnings
+	docs: Remove all "Contains only private data…" from structure comments (Corentin Noël)
+	docs: Put Camel documentation into a subfolder (Corentin Noël)
+	Do not lock SExp object in data book/cal views start
+	e-book-meta-backend: Handle data: URI-s in PHOTO/LOGO
+	Calendar: Use icaldurationtype_as_utc_seconds() for libical 4.x (Antonio Rojas)
+	Convert license/copyright comments into SPDX notation
+	OAuth2: Use its own error domain and add camel_util_is_network_error()
+	camel: Add atomic write API to CamelDataCache and convert all providers
+	POP3: Remove sentinel bytes and migrate existing cache files
+	camel: Recognize all G_TLS_ERROR codes as network errors
+	camel: Clean up test files and convert them to glib test API
+	CI: Add a job to produce a test coverage report (Federico Mena Quintero)
+	CI: add a job for static analysis with scan-build (Federico Mena Quintero)
+	CI: Add a job to run the tests with address and undefined-behavior sanitizers (Federico Mena Quintero)
+	camel: Test substring body search with and without index
+	Camel: Move search with index from the store search to a common place
+	camel: Fix CamelCertDB leak in camel_shutdown()
+	Camel: Add GSETTINGS_SCHEMA_DIR into the tests
+	Camel: Reorganize tests directories
+	Use "--output-on-failure" for ctest in "make test"
+	docs/index.html: Provide links to the coverage and static analysis reports (Federico Mena Quintero)
+	Make the scan-build page's title prettier (Federico Mena Quintero)
+	Calendar: Do not use persistent refresh thread in the 'file' backend
+	tests: Flush main context when finishing server tests
+	Drop optional gtk+ code from background processes
+
+Translations:
+	Aurimas Aurimas Černius (lt)
+	Ekaterine Papava (ka)
+	Emin Tufan Çetin (tr)
+	Juliano de Souza Camargo (pt_BR)
+	Kjartan Maraas (nb)
+	Kristjan ESPERANTO (eo)
+	Марко Костић (sr)
+	Martin (sl)
+	Yuri Chornoivan (uk)
 
 Evolution-Data-Server 3.60.0 2026-03-13
 ---------------------------------------

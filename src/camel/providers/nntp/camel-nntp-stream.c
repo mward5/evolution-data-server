@@ -1,19 +1,7 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -23,6 +11,7 @@
 #include <string.h>
 #include <glib/gi18n-lib.h>
 
+#include "camel-nntp-store.h"
 #include "camel-nntp-stream.h"
 
 #define dd(x) (camel_debug ("nntp:stream")?(x):0)
@@ -541,11 +530,15 @@ camel_nntp_stream_lock (CamelNNTPStream *nntp_stream)
 }
 
 void
-camel_nntp_stream_unlock (CamelNNTPStream *nntp_stream)
+camel_nntp_stream_unlock (CamelNNTPStream *nntp_stream,
+                          CamelNNTPStore *nntp_store)
 {
 	g_return_if_fail (CAMEL_IS_NNTP_STREAM (nntp_stream));
+	g_return_if_fail (CAMEL_IS_NNTP_STORE (nntp_store));
 
 	g_rec_mutex_unlock (&nntp_stream->lock);
+
+	camel_nntp_store_maybe_schedule_idle_disconnect (nntp_store);
 }
 
 static GSocket *

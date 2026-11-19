@@ -1,20 +1,7 @@
-/* camel-imap-conn-manager.h
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Chenthill Palanisamy <pchenthill@novell.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Chenthill Palanisamy <pchenthill@novell.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -1312,8 +1299,6 @@ camel_imapx_conn_manager_run_job_sync (CamelIMAPXConnManager *conn_man,
 				imapx_conn_manager_remove_info (conn_man, cinfo);
 
 				if (!local_error ||
-				    g_error_matches (local_error, G_TLS_ERROR, G_TLS_ERROR_MISC) ||
-				    g_error_matches (local_error, G_TLS_ERROR, G_TLS_ERROR_EOF) ||
 				    camel_util_is_network_error (local_error)) {
 					GError *tmp = local_error;
 
@@ -1566,6 +1551,27 @@ camel_imapx_conn_manager_refresh_info_sync (CamelIMAPXConnManager *conn_man,
 	return success;
 }
 
+static void
+imapx_conn_manager_filter_uids_by_current_flags (CamelFolderSummary *summary,
+                                                 GPtrArray *uids,
+                                                 guint32 flags_set,
+                                                 guint32 flags_clear)
+{
+	guint ii;
+
+	for (ii = uids->len; ii > 0; ii--) {
+		const gchar *uid = g_ptr_array_index (uids, ii - 1);
+		CamelMessageInfo *info = camel_folder_summary_get (summary, uid);
+		guint32 flags = info ? camel_message_info_get_flags (info) : 0;
+		gboolean keep = info && (flags & flags_set) == flags_set && (flags & flags_clear) == 0;
+
+		g_clear_object (&info);
+
+		if (!keep)
+			g_ptr_array_remove_index (uids, ii - 1);
+	}
+}
+
 static gboolean
 imapx_conn_manager_move_to_real_junk_sync (CamelIMAPXConnManager *conn_man,
 					   CamelFolder *folder,
@@ -1595,6 +1601,9 @@ imapx_conn_manager_move_to_real_junk_sync (CamelIMAPXConnManager *conn_man,
 	if (camel_imapx_settings_get_use_real_junk_path (settings)) {
 		real_junk_path = camel_imapx_settings_dup_real_junk_path (settings);
 		camel_imapx_folder_claim_move_to_real_junk_uids (imapx_folder, uids_to_copy);
+		imapx_conn_manager_filter_uids_by_current_flags (
+			camel_folder_get_folder_summary (folder), uids_to_copy,
+			CAMEL_MESSAGE_JUNK, CAMEL_MESSAGE_NOTJUNK);
 	}
 	g_object_unref (settings);
 
@@ -1669,6 +1678,7 @@ imapx_conn_manager_move_to_real_trash_sync (CamelIMAPXConnManager *conn_man,
 	GPtrArray *uids_to_copy;
 	gchar *real_trash_path = NULL;
 	guint32 folder_deleted_count = 0;
+	guint test_delay_ms;
 	gboolean success = TRUE;
 
 	*out_need_to_expunge = FALSE;
@@ -1686,6 +1696,14 @@ imapx_conn_manager_move_to_real_trash_sync (CamelIMAPXConnManager *conn_man,
 	if (camel_imapx_settings_get_use_real_trash_path (settings)) {
 		real_trash_path = camel_imapx_settings_dup_real_trash_path (settings);
 		camel_imapx_folder_claim_move_to_real_trash_uids (CAMEL_IMAPX_FOLDER (folder), uids_to_copy);
+
+		test_delay_ms = camel_imapx_folder_get_test_move_to_trash_delay_ms (imapx_folder);
+		if (test_delay_ms > 0)
+			g_usleep ((gulong) test_delay_ms * 1000);
+
+		imapx_conn_manager_filter_uids_by_current_flags (
+			camel_folder_get_folder_summary (folder), uids_to_copy,
+			CAMEL_MESSAGE_DELETED, 0);
 	}
 	g_object_unref (settings);
 
@@ -1779,6 +1797,9 @@ imapx_conn_manager_move_to_not_junk_sync (CamelIMAPXConnManager *conn_man,
 	uids_to_copy = g_ptr_array_new_with_free_func ((GDestroyNotify) camel_pstring_free);
 
 	camel_imapx_folder_claim_move_to_not_junk_uids (CAMEL_IMAPX_FOLDER (folder), uids_to_copy);
+	imapx_conn_manager_filter_uids_by_current_flags (
+		camel_folder_get_folder_summary (folder), uids_to_copy,
+		CAMEL_MESSAGE_NOTJUNK, 0);
 
 	if (uids_to_copy->len > 0) {
 		CamelFolder *dest_folder = NULL;
@@ -2920,6 +2941,126 @@ camel_imapx_conn_manager_uid_search_sync (CamelIMAPXConnManager *conn_man,
 	camel_imapx_job_unref (job);
 
 	return uids;
+}
+
+typedef struct _MultimailboxSearchJobData {
+	GPtrArray *mailboxes;
+	gchar *search_key;
+	gchar **words;
+} MultimailboxSearchJobData;
+
+static void
+multimailbox_search_job_data_free (gpointer ptr)
+{
+	MultimailboxSearchJobData *job_data = ptr;
+
+	if (ptr) {
+		g_ptr_array_unref (job_data->mailboxes);
+		g_free (job_data->search_key);
+		g_strfreev (job_data->words);
+		g_free (job_data);
+	}
+}
+
+static gboolean
+imapx_conn_manager_multimailbox_search_run_sync (CamelIMAPXJob *job,
+                                                 CamelIMAPXServer *server,
+                                                 GCancellable *cancellable,
+                                                 GError **error)
+{
+	MultimailboxSearchJobData *job_data;
+	GHashTable *results = NULL;
+	GError *local_error = NULL;
+
+	g_return_val_if_fail (job != NULL, FALSE);
+	g_return_val_if_fail (CAMEL_IS_IMAPX_SERVER (server), FALSE);
+
+	job_data = camel_imapx_job_get_user_data (job);
+	g_return_val_if_fail (job_data != NULL, FALSE);
+
+	results = camel_imapx_server_multimailbox_search_sync (server, job_data->mailboxes,
+		job_data->search_key, (const gchar * const *) job_data->words, cancellable, &local_error);
+
+	camel_imapx_job_set_result (job, results != NULL, results, local_error, results ? (GDestroyNotify) g_hash_table_unref : NULL);
+
+	if (local_error)
+		g_propagate_error (error, local_error);
+
+	return results != NULL;
+}
+
+static gboolean
+imapx_conn_manager_multimailbox_search_matches (CamelIMAPXJob *job,
+                                                CamelIMAPXJob *other_job)
+{
+	MultimailboxSearchJobData *job_data, *other_job_data;
+	guint ii;
+
+	g_return_val_if_fail (job != NULL, FALSE);
+	g_return_val_if_fail (other_job != NULL, FALSE);
+
+	if (camel_imapx_job_get_kind (job) != CAMEL_IMAPX_JOB_ESEARCH ||
+	    camel_imapx_job_get_kind (job) != camel_imapx_job_get_kind (other_job))
+		return FALSE;
+
+	job_data = camel_imapx_job_get_user_data (job);
+	other_job_data = camel_imapx_job_get_user_data (other_job);
+
+	if (!job_data || !other_job_data)
+		return job_data == other_job_data;
+
+	if (job_data->mailboxes->len != other_job_data->mailboxes->len)
+		return FALSE;
+
+	for (ii = 0; ii < job_data->mailboxes->len; ii++) {
+		if (g_ptr_array_index (job_data->mailboxes, ii) != g_ptr_array_index (other_job_data->mailboxes, ii))
+			return FALSE;
+	}
+
+	return g_strcmp0 (job_data->search_key, other_job_data->search_key) == 0 &&
+	       imapx_equal_strv ((const gchar * const  *) job_data->words, (const gchar * const  *) other_job_data->words);
+}
+
+GHashTable *
+camel_imapx_conn_manager_multimailbox_search_sync (CamelIMAPXConnManager *conn_man,
+                                                   GPtrArray *mailboxes, /* CamelIMAPXMailbox * */
+                                                   const gchar *search_key,
+                                                   const GPtrArray *words,
+                                                   GCancellable *cancellable,
+                                                   GError **error)
+{
+	MultimailboxSearchJobData *job_data;
+	GHashTable *results = NULL;
+	CamelIMAPXJob *job;
+	gboolean success;
+
+	g_return_val_if_fail (CAMEL_IS_IMAPX_CONN_MANAGER (conn_man), NULL);
+	g_return_val_if_fail (mailboxes != NULL, NULL);
+
+	job_data = g_new0 (MultimailboxSearchJobData, 1);
+	job_data->mailboxes = g_ptr_array_ref (mailboxes);
+	job_data->search_key = g_strdup (search_key);
+	job_data->words = imapx_copy_words (words);
+
+	job = camel_imapx_job_new (CAMEL_IMAPX_JOB_ESEARCH, NULL,
+		imapx_conn_manager_multimailbox_search_run_sync,
+		imapx_conn_manager_multimailbox_search_matches,
+		NULL);
+
+	camel_imapx_job_set_user_data (job, job_data, multimailbox_search_job_data_free);
+
+	success = camel_imapx_conn_manager_run_job_sync (conn_man, job, NULL, cancellable, error);
+	if (success) {
+		gpointer result_data = NULL;
+
+		success = camel_imapx_job_take_result_data (job, &result_data);
+		if (success)
+			results = result_data;
+	}
+
+	camel_imapx_job_unref (job);
+
+	return results;
 }
 
 /* for debugging purposes only */

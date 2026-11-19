@@ -1,6 +1,6 @@
 /*
  * SPDX-FileCopyrightText: (C) 2022 Red Hat (www.redhat.com)
- * SPDX-License-Identifier: LGPL-2.1-or-later
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 /**
@@ -314,6 +314,8 @@ e_gdata_session_send_request_sync (EGDataSession *self,
 		if (need_retry) {
 			success = FALSE;
 			g_clear_error (error);
+
+			g_signal_emit_by_name (message, "restarted");
 		}
 	}
 

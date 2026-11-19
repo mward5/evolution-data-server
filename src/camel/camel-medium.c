@@ -1,22 +1,28 @@
-/* camelMedium.c : Abstract class for a medium
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Bertrand Guiheneuf <bertrand@helixcode.com>
- *	    Michael Zucchi <notzed@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
+
+/**
+ * CamelMedium:
+ *
+ * Abstract class for data with headers and content.
+ *
+ * #CamelMedium extends #CamelDataWrapper with support for named message
+ * headers and a separate content object. It is the common ancestor of
+ * #CamelMimePart and ultimately #CamelMimeMessage.
+ *
+ * The header interface operates on raw (wire-format) header values; any
+ * RFC 2047 or other encoding must be applied by the caller. Multiple
+ * headers with the same name are supported; camel_medium_remove_header()
+ * removes all occurrences.
+ *
+ * The content object is a #CamelDataWrapper instance accessible via
+ * camel_medium_get_content() and camel_medium_set_content(). For MIME
+ * messages this is the parsed body of the part.
+ **/
 
 #include "evolution-data-server-config.h"
 

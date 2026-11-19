@@ -1,18 +1,6 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #ifndef CAMEL_IMAPX_UTILS_H
@@ -118,6 +106,7 @@ typedef enum _camel_imapx_id_t {
 #define CAMEL_IMAPX_UNTAGGED_QUOTAROOT  "QUOTAROOT"
 #define CAMEL_IMAPX_UNTAGGED_RECENT     "RECENT"
 #define CAMEL_IMAPX_UNTAGGED_SEARCH     "SEARCH"
+#define CAMEL_IMAPX_UNTAGGED_ESEARCH    "ESEARCH"
 #define CAMEL_IMAPX_UNTAGGED_STATUS     "STATUS"
 #define CAMEL_IMAPX_UNTAGGED_VANISHED   "VANISHED"
 
@@ -197,7 +186,8 @@ enum {
 	IMAPX_CAPABILITY_UTF8_ACCEPT = (1 << 17),
 	IMAPX_CAPABILITY_UTF8_ONLY = (1 << 18),
 	IMAPX_CAPABILITY_LOGINDISABLED = (1 << 19),
-	IMAPX_CAPABILITY_PREVIEW = (1 << 20)
+	IMAPX_CAPABILITY_PREVIEW = (1 << 20),
+	IMAPX_CAPABILITY_MULTISEARCH = (1 << 21)
 };
 
 struct _capability_info {

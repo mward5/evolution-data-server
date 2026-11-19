@@ -1,18 +1,5 @@
 /*
- * evolution-source-registry-autoconfig.c
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -665,8 +652,7 @@ e_autoconfig_read_user_variables (GSettings *settings)
 		if (!*line)
 			continue;
 
-		sep = strchr (line, '=');
-		if (!sep || sep == line) {
+		if (*line == '=' || !strchr (line, '=')) {
 			e_source_registry_debug_print ("Autoconfig: GSettings' autoconfig-variables line '%s' doesn't conform format 'name=value'.\n", line);
 			continue;
 		}

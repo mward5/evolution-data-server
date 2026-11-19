@@ -1,18 +1,6 @@
 /*
- * Copyright (C) 2015 Red Hat, Inc. (www.redhat.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: (C) 2015 Red Hat, Inc. (www.redhat.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -420,14 +408,16 @@ cpi_oauth2_extract_authentication_code (ECredentialsPrompterImplOAuth2 *prompter
 					const gchar *page_uri,
 					const gchar *page_content)
 {
+	ESource *use_source;
 	gchar *authorization_code = NULL;
 	gchar *error_message = NULL;
 
 	g_return_if_fail (E_IS_CREDENTIALS_PROMPTER_IMPL_OAUTH2 (prompter_oauth2));
 	g_return_if_fail (prompter_oauth2->priv->service != NULL);
 
-	if (e_oauth2_service_extract_error_message (prompter_oauth2->priv->service,
-		prompter_oauth2->priv->cred_source ? prompter_oauth2->priv->cred_source : prompter_oauth2->priv->auth_source,
+	use_source = prompter_oauth2->priv->cred_source ? prompter_oauth2->priv->cred_source : prompter_oauth2->priv->auth_source;
+
+	if (e_oauth2_service_extract_error_message (prompter_oauth2->priv->service, use_source,
 		page_title, page_uri, page_content, &error_message) && error_message) {
 		gchar *complete_message;
 
@@ -441,8 +431,36 @@ cpi_oauth2_extract_authentication_code (ECredentialsPrompterImplOAuth2 *prompter
 
 	g_clear_pointer (&error_message, g_free);
 
-	if (!e_oauth2_service_extract_authorization_code (prompter_oauth2->priv->service,
-		prompter_oauth2->priv->cred_source ? prompter_oauth2->priv->cred_source : prompter_oauth2->priv->auth_source,
+	if (page_uri && *page_uri) {
+		const gchar *redirect_uri;
+
+		redirect_uri = e_oauth2_service_get_redirect_uri (prompter_oauth2->priv->service, use_source);
+		if (redirect_uri && *redirect_uri) {
+			GUri *page, *redirect;
+			gboolean can_process = TRUE;
+
+			page = g_uri_parse (page_uri, G_URI_FLAGS_PARSE_RELAXED | SOUP_HTTP_URI_FLAGS, NULL);
+			redirect = g_uri_parse (redirect_uri, G_URI_FLAGS_PARSE_RELAXED | SOUP_HTTP_URI_FLAGS, NULL);
+
+			if (page && redirect) {
+				#define non_null(_x) ((_x) ? (_x) : "")
+				#define is_equal(_fn) (g_ascii_strcasecmp (non_null (_fn (page)), non_null (_fn (redirect))) == 0)
+
+				can_process = is_equal (g_uri_get_host) && is_equal (g_uri_get_path);
+
+				#undef is_equal
+				#undef non_null
+			}
+
+			g_clear_pointer (&redirect, g_uri_unref);
+			g_clear_pointer (&page, g_uri_unref);
+
+			if (!can_process)
+				return;
+		}
+	}
+
+	if (!e_oauth2_service_extract_authorization_code (prompter_oauth2->priv->service, use_source,
 		page_title, page_uri, page_content, &authorization_code)) {
 		return;
 	}
@@ -1383,8 +1401,12 @@ e_credentials_prompter_impl_oauth2_show_dialog (ECredentialsPrompterImplOAuth2 *
 		_("_Cancel"), GTK_RESPONSE_CANCEL,
 		NULL);
 
-	if (dialog_parent)
+	if (dialog_parent) {
 		gtk_window_set_transient_for (GTK_WINDOW (dialog), GTK_WINDOW (dialog_parent));
+
+		if (gtk_window_get_modal (dialog_parent))
+			gtk_window_set_modal (GTK_WINDOW (dialog), TRUE);
+	}
 
 	g_action_map_add_action_entries (action_map, action_entries, G_N_ELEMENTS (action_entries), prompter_oauth2);
 	gtk_widget_insert_action_group (dialog, "cpi-oauth2", G_ACTION_GROUP (action_map));
@@ -1414,8 +1436,6 @@ e_credentials_prompter_impl_oauth2_show_dialog (ECredentialsPrompterImplOAuth2 *
 
 	prompter_oauth2->priv->dialog = GTK_DIALOG (dialog);
 	gtk_window_set_resizable (GTK_WINDOW (dialog), TRUE);
-	if (dialog_parent)
-		gtk_window_set_transient_for (GTK_WINDOW (dialog), dialog_parent);
 #if !GTK_CHECK_VERSION(4, 0, 0)
 	gtk_window_set_position (GTK_WINDOW (dialog), GTK_WIN_POS_CENTER_ON_PARENT);
 	gtk_container_set_border_width (GTK_CONTAINER (dialog), 6);

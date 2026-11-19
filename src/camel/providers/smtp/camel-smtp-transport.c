@@ -1,20 +1,7 @@
-/* camel-smtp-transport.c : class for a smtp transport
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Jeffrey Stedfast <fejj@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -789,8 +776,7 @@ smtp_transport_authenticate_sync (CamelService *service,
 		if (challenge == NULL)
 			goto break_and_lose;
 
-		g_free (respbuf);
-		respbuf = NULL;
+		g_clear_pointer (&respbuf, g_free);
 
 		/* send our challenge */
 		cmdbuf = g_strdup_printf ("%s\r\n", challenge);
@@ -846,7 +832,7 @@ smtp_transport_authenticate_sync (CamelService *service,
 					g_clear_object (&ostream);
 					g_object_unref (sasl);
 					g_free (password_latin1);
-					g_free (respbuf);
+					g_clear_pointer (&respbuf, g_free);
 
 					goto try_again;
 				} else {
@@ -1314,7 +1300,7 @@ smtp_decode_status_code (const gchar *in,
 	inend = inptr + len;
 	while (inptr < inend) {
 		if (*inptr == '+') {
-			if (isxdigit (inptr[1]) && isxdigit (inptr[2])) {
+			if (inptr + 2 < inend && isxdigit (inptr[1]) && isxdigit (inptr[2])) {
 				*outptr++ = HEXVAL (inptr[1]) * 16 + HEXVAL (inptr[2]);
 				inptr += 3;
 			} else
@@ -1648,8 +1634,14 @@ smtp_mail (CamelSmtpTransport *transport,
 
 		g_string_append_printf (cmd, " RET=%s", dsn_ret_full ? "FULL" : "HDRS");
 
-		if (dsn_envid && *dsn_envid)
-			g_string_append_printf (cmd, " ENVID=%s", dsn_envid);
+		if (dsn_envid && *dsn_envid) {
+			/* Sanitize ENVID to prevent SMTP command injection
+			 * via CRLF sequences in the Message-ID */
+			gchar *safe_envid = g_strdup (dsn_envid);
+			g_strdelimit (safe_envid, "\r\n", '_');
+			g_string_append_printf (cmd, " ENVID=%s", safe_envid);
+			g_free (safe_envid);
+		}
 	}
 
 	g_string_append (cmd, "\r\n");

@@ -1,20 +1,7 @@
-/* camel-smtp-provider.c: smtp provider registration code
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Jeffrey Stedfast <fejj@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -33,7 +20,7 @@ CamelProviderConfEntry smtp_conf_entries[] = {
 	{ CAMEL_PROVIDER_CONF_SECTION_START, "smtpsection", NULL,
 	  N_("Send Options") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "reencode-data", NULL,
-	  N_("_Re-encode message before send"), "0" },
+	  N_("_Re-encode message before send") },
 	{ CAMEL_PROVIDER_CONF_SECTION_END },
 	{ CAMEL_PROVIDER_CONF_END }
 };

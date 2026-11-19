@@ -1,21 +1,8 @@
-/* camel-nntp-folder.c : Class for a news folder
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors : Chris Toshok <toshok@ximian.com>
- *           Michael Zucchi <notzed@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Chris Toshok <toshok@ximian.com>
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -251,16 +238,14 @@ nntp_folder_download_message (CamelNNTPFolder *nntp_folder,
 	if (ret == 220) {
 		GIOStream *base_stream;
 
-		base_stream = camel_data_cache_add (
-			nntp_cache, "tmp", msgid, NULL);
+		base_stream = camel_data_cache_add_atomic (
+			nntp_cache, "cache", msgid, NULL);
 		if (base_stream != NULL) {
 			CamelStream *write_stream;
-			gchar *tmp_filename, *cache_filename, *cache_dirname;
-			gboolean success;
 			GIOStream *cache_io_stream;
+			gboolean success;
 
 			write_stream = camel_stream_new (base_stream);
-			g_object_unref (base_stream);
 
 			success = (camel_stream_write_to_stream (
 				CAMEL_STREAM (nntp_stream),
@@ -269,34 +254,18 @@ nntp_folder_download_message (CamelNNTPFolder *nntp_folder,
 			camel_stream_close (write_stream, NULL, NULL);
 			g_clear_object (&write_stream);
 
-			if (!success)
-				goto fail;
-
-			tmp_filename = camel_data_cache_get_filename (nntp_cache, "tmp", msgid);
-			cache_filename = camel_data_cache_get_filename (nntp_cache, "cache", msgid);
-			cache_dirname = g_path_get_dirname (cache_filename);
-			g_mkdir_with_parents (cache_dirname, 0700);
-			g_free (cache_dirname);
-
-			if (g_rename (tmp_filename, cache_filename) == -1) {
-				gint errsv = errno;
-				g_warning ("%s: Failed to rename '%s' to '%s': %s",
-					G_STRFUNC, tmp_filename, cache_filename, g_strerror (errsv));
-				g_free (tmp_filename);
-				g_free (cache_filename);
-				goto fail;
-			}
-
-			camel_data_cache_remove (nntp_cache, "tmp", msgid, NULL);
-			g_free (tmp_filename);
-			g_free (cache_filename);
-
-			cache_io_stream = camel_data_cache_get (nntp_cache, "cache", msgid, error);
-			if (cache_io_stream != NULL) {
-				stream = camel_stream_new (cache_io_stream);
-				g_object_unref (cache_io_stream);
+			if (success) {
+				cache_io_stream = camel_data_cache_commit_atomic (
+					nntp_cache, g_steal_pointer (&base_stream), error);
+				if (cache_io_stream != NULL) {
+					stream = camel_stream_new (cache_io_stream);
+					g_clear_object (&cache_io_stream);
+				} else {
+					g_prefix_error (error, _("Cannot get message %s: "), msgid);
+				}
 			} else {
-				goto fail;
+				camel_data_cache_discard_atomic (nntp_cache, g_steal_pointer (&base_stream));
+				g_prefix_error (error, _("Cannot get message %s: "), msgid);
 			}
 		} else {
 			stream = CAMEL_STREAM (g_object_ref (nntp_stream));
@@ -314,17 +283,8 @@ nntp_folder_download_message (CamelNNTPFolder *nntp_folder,
 			_("Cannot get message %s: %s"), msgid, line);
 	}
 
-	goto exit;
-
- fail:
-	camel_data_cache_remove (nntp_cache, "tmp", msgid, NULL);
-	g_prefix_error (error, _("Cannot get message %s: "), msgid);
-
-	g_clear_object (&stream);
-
- exit:
 	if (nntp_stream)
-		camel_nntp_stream_unlock (nntp_stream);
+		camel_nntp_stream_unlock (nntp_stream, nntp_store);
 
 	g_clear_object (&nntp_cache);
 	g_clear_object (&nntp_stream);
@@ -443,7 +403,7 @@ nntp_folder_append_message_sync (CamelFolder *folder,
 
  exit:
 	if (nntp_stream)
-		camel_nntp_stream_unlock (nntp_stream);
+		camel_nntp_stream_unlock (nntp_stream, nntp_store);
 	g_clear_object (&nntp_stream);
 
 	return success;
@@ -808,6 +768,7 @@ camel_nntp_folder_new (CamelStore *parent,
 	CamelSettings *settings;
 	CamelStoreInfo *si;
 	const gchar *user_cache_dir;
+	guint32 add_folder_flags = CAMEL_FOLDER_HAS_SUMMARY_CAPABILITY;
 	gboolean subscribed = TRUE;
 	gboolean filter_all = FALSE, filter_junk = TRUE;
 
@@ -831,7 +792,13 @@ camel_nntp_folder_new (CamelStore *parent,
 		"parent-store", parent, NULL);
 	nntp_folder = (CamelNNTPFolder *) folder;
 
-	camel_folder_set_flags (folder, camel_folder_get_flags (folder) | CAMEL_FOLDER_HAS_SUMMARY_CAPABILITY);
+	if (filter_all || nntp_folder_get_apply_filters (nntp_folder))
+		add_folder_flags |= CAMEL_FOLDER_FILTER_RECENT;
+
+	if (filter_junk)
+		add_folder_flags |= CAMEL_FOLDER_FILTER_JUNK;
+
+	camel_folder_set_flags (folder, camel_folder_get_flags (folder) | add_folder_flags);
 
 	storage_path = g_build_filename (user_cache_dir, folder_name, NULL);
 	root = g_strdup_printf ("%s.cmeta", storage_path);
@@ -841,12 +808,6 @@ camel_nntp_folder_new (CamelStore *parent,
 	g_free (storage_path);
 
 	camel_folder_take_folder_summary (folder, (CamelFolderSummary *) camel_nntp_summary_new (folder));
-
-	if (filter_all || nntp_folder_get_apply_filters (nntp_folder))
-		camel_folder_set_flags (folder, camel_folder_get_flags (folder) | CAMEL_FOLDER_FILTER_RECENT);
-
-	if (filter_junk)
-		camel_folder_set_flags (folder, camel_folder_get_flags (folder) | CAMEL_FOLDER_FILTER_JUNK);
 
 	camel_folder_summary_load (camel_folder_get_folder_summary (folder), NULL);
 

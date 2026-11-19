@@ -1,6 +1,6 @@
 /*
  * SPDX-FileCopyrightText: (C) 2025 Red Hat (www.redhat.com)
- * SPDX-License-Identifier: LGPL-2.1-or-later
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -19,9 +19,9 @@
 #include "camel-store-search.h"
 
 /**
- * SECTION: camel-store-search
- * @include: camel/camel.h
- * @short_description: search between multiple folders of one #CamelStore
+ * CamelStoreSearch:
+ *
+ * Search between multiple folders of one #CamelStore.
  *
  * The #CamelStoreSearch allows to search between multiple folders
  * of a single #CamelStore. It's primarily meant to be used by
@@ -3805,12 +3805,46 @@ camel_store_search_search_body_run_sync (CamelStoreSearch *self,
 
 		if (!search_cache_has_token_result (cache, op->needle) && self->priv->ongoing_search.folder) {
 			GPtrArray *uids = NULL;
+			GPtrArray *folders;
 			gboolean could_search;
+			gboolean fallback = TRUE;
 
-			could_search = camel_folder_search_body_sync (self->priv->ongoing_search.folder, op->words, &uids, cancellable, NULL);
-			search_cache_add_token_result (cache, op->needle, folder_id, uids, !could_search);
+			folders = camel_store_search_list_folders (self);
 
-			g_clear_pointer (&uids, g_ptr_array_unref);
+			if (folders && folders->len > 1) {
+				GHashTable *multi_results = NULL;
+				GError *local_error = NULL;
+
+				if (camel_store_search_multimailbox_sync (self->priv->store, folders, "BODY", op->words, &multi_results, cancellable, &local_error)) {
+					guint jj;
+
+					fallback = FALSE;
+					for (jj = 0; jj < folders->len; jj++) {
+						CamelFolder *f = g_ptr_array_index (folders, jj);
+						guint32 fid = camel_store_db_get_folder_id (self->priv->store_db, camel_folder_get_full_name (f));
+						if (fid) {
+							GPtrArray *f_uids = g_hash_table_lookup (multi_results, camel_folder_get_full_name (f));
+							search_cache_add_token_result (cache, op->needle, fid, f_uids, FALSE);
+						}
+					}
+					g_hash_table_destroy (multi_results);
+				} else {
+					if (!g_error_matches (local_error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED)) {
+						g_propagate_error (self->priv->ongoing_search.error, local_error);
+						self->priv->ongoing_search.success = FALSE;
+						g_ptr_array_unref (folders);
+						return FALSE;
+					}
+					g_clear_error (&local_error);
+				}
+			}
+			g_clear_pointer (&folders, g_ptr_array_unref);
+
+			if (fallback) {
+				could_search = camel_folder_search_body_sync (self->priv->ongoing_search.folder, op->words, &uids, cancellable, NULL);
+				search_cache_add_token_result (cache, op->needle, folder_id, uids, !could_search);
+				g_clear_pointer (&uids, g_ptr_array_unref);
+			}
 		}
 
 		if (!search_cache_get_token_result_failed (cache, op->needle, folder_id) &&
@@ -3827,13 +3861,9 @@ camel_store_search_search_body_run_sync (CamelStoreSearch *self,
 	camel_store_search_ensure_ongoing_search (self, uid, ENSURE_FLAG_MESSAGE);
 
 	if (self->priv->ongoing_search.message) {
-		camel_search_flags_t type = CAMEL_SEARCH_MATCH_ICASE;
 		regex_t pattern;
 
 		matches = FALSE;
-
-		if (is_regex)
-			type |= CAMEL_SEARCH_MATCH_REGEX | CAMEL_SEARCH_MATCH_NEWLINE;
 
 		if (camel_search_build_match_regex_strv (&pattern, CAMEL_SEARCH_MATCH_ICASE,
 		    (gint) op->words->len, (const gchar **) op->words->pdata, self->priv->ongoing_search.error)) {

@@ -1,19 +1,7 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #if !defined (__CAMEL_H_INSIDE__) && !defined (CAMEL_COMPILATION)
@@ -111,9 +99,6 @@ CamelStream    *camel_mime_parser_stream (CamelMimeParser *parser);
 void camel_mime_parser_scan_from (CamelMimeParser *parser, gboolean scan_from);
 /* Do we want to know about the pre-from data? */
 void camel_mime_parser_scan_pre_from (CamelMimeParser *parser, gboolean scan_pre_from);
-
-/* what headers to save, MUST include ^Content-Type: */
-gint camel_mime_parser_set_header_regex (CamelMimeParser *parser, gchar *matchstr);
 
 /* normal interface */
 CamelMimeParserState camel_mime_parser_step (CamelMimeParser *parser, gchar **databuffer, gsize *datalength);

@@ -1,25 +1,9 @@
 /*
- * The Initial Developer of the Original Code is Netscape
- * Communications Corporation.  Portions created by Netscape are
- * Copyright (C) 1994-2000 Netscape Communications Corporation.  All
- * Rights Reserved.
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Jeffrey Stedfast <fejj@ximian.com>
- *          Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1994-2000 Netscape Communications Corporation.  All
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -690,7 +674,6 @@ sm_verify_cmsg (CamelCipherContext *context,
 	SECItem **digests;
 	PLArenaPool *poolp = NULL;
 	CamelStream *mem;
-	NSSCMSVerificationStatus status;
 	CamelCipherValiditySign sign_status = CAMEL_CIPHER_VALIDITY_SIGN_UNKNOWN;
 	CamelCipherValidity *valid;
 	GString *description;
@@ -698,7 +681,6 @@ sm_verify_cmsg (CamelCipherContext *context,
 
 	description = g_string_new ("");
 	valid = camel_cipher_validity_new ();
-	status = NSSCMSVS_Unverified;
 
 	/* NB: this probably needs to go into a decoding routine that can be used for processing
 	 * enveloped data too */
@@ -780,7 +762,6 @@ sm_verify_cmsg (CamelCipherContext *context,
 				if (NSS_CMSSignedData_VerifyCertsOnly (sigd, p->certdb, certUsageEmailSigner) != SECSuccess) {
 					g_string_printf (description, _("Certificate is the only message, cannot verify certificates"));
 				} else {
-					status = NSSCMSVS_GoodSignature;
 					g_string_printf (description, _("Certificate is the only message, certificates imported and verified"));
 				}
 			} else {
@@ -796,6 +777,7 @@ sm_verify_cmsg (CamelCipherContext *context,
 					const gchar *status_description;
 					gchar *cn, *em;
 					gint idx;
+					NSSCMSVerificationStatus status;
 
 					si = NSS_CMSSignedData_GetSignerInfo (sigd, j);
 					NSS_CMSSignedData_VerifySignerInfo (sigd, j, p->certdb, certUsageEmailSigner);

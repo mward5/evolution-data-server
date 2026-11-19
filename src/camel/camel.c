@@ -1,20 +1,8 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Jeffrey Stedfast <fejj@ximian.com>
- *          Bertrand Guiheneuf <bertrand@helixcode.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -130,9 +118,10 @@ camel_init (const gchar *configdir,
 			nss_sql_configdir = g_strdup ("sql:" NSS_SYSTEM_DB );
 		} else {
 			/* On Windows, we use the Evolution configdir. On other
-			 * operating systems we use ~/.pki/nssdb/, which is where
-			 * the user-specific part of the "shared system db" is
-			 * stored and is what Chrome uses too.
+			 * operating systems we use ~/.pki/nssdb/ if it exists,
+			 * otherwise $XDG_DATA_HOME/pki/nssdb is used, which is
+			 * where the user-specific part of the "shared system db"
+			 * is stored and is what Chrome uses too.
 			 *
 			 * We have to create the configdir if it does not exist,
 			 * to prevent camel from bailing out on first run. */
@@ -145,6 +134,13 @@ camel_init (const gchar *configdir,
 
 			/* Flatpak should allow access to the host machine's ~/.pki */
 			user_nss_dir = g_build_filename (g_get_home_dir (), ".pki", "nssdb", NULL);
+
+#if NSS_VMAJOR > 3 || (NSS_VMAJOR == 3 && NSS_VMINOR >= 42)
+			if (!g_file_test (user_nss_dir, G_FILE_TEST_EXISTS | G_FILE_TEST_IS_DIR)) {
+				g_free (user_nss_dir);
+				user_nss_dir = g_build_filename (g_get_user_data_dir (), "pki", "nssdb", NULL);
+			}
+#endif
 
 			if (g_mkdir_with_parents (user_nss_dir, 0700))
 				g_warning (
@@ -259,6 +255,7 @@ camel_shutdown (void)
 	if (certdb) {
 		camel_certdb_save (certdb);
 		camel_certdb_set_default (NULL);
+		g_clear_object (&certdb);
 	}
 
 	/* These next calls must come last. */

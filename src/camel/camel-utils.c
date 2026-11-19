@@ -1,17 +1,6 @@
 /*
- * Copyright (C) 2016 Red Hat, Inc. (www.redhat.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: (C) 2016 Red Hat, Inc. (www.redhat.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -535,19 +524,22 @@ camel_util_decode_user_header_setting (const gchar *setting_value,
  * @error: (nullable): a #GError, or %NULL
  *
  * Checks whether @error represents a network or connection error
- * (host unreachable, connection refused, DNS failure, timeout, etc.)
- * as opposed to a protocol-level or application-level error.
+ * (host unreachable, connection refused, DNS failure, timeout, TLS failure,
+ * etc.) as opposed to a protocol-level or application-level error.
  *
  * Returns: %TRUE if @error is a network/connection error, %FALSE otherwise
  *    (including when @error is %NULL)
  *
- * Since: 3.60.2
+ * Since: 3.62
  **/
 gboolean
 camel_util_is_network_error (const GError *error)
 {
 	if (!error)
 		return FALSE;
+
+	if (error->domain == G_TLS_ERROR)
+		return TRUE;
 
 	if (error->domain == G_IO_ERROR) {
 		switch (error->code) {

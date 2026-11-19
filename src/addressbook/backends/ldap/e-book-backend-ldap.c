@@ -1,21 +1,8 @@
-/* e-book-backend-ldap.c - LDAP contact backend.
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Chris Toshok <toshok@ximian.com>
- *          Hans Petter Jansson <hpj@novell.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Chris Toshok <toshok@ximian.com>
+ * SPDX-FileContributor: Hans Petter Jansson <hpj@novell.com>
  */
 
 #define DEBUG
@@ -212,6 +199,10 @@ static void category_populate (EBookBackendLDAP *self, EContact *contact, gchar 
 static struct berval ** category_ber (EBookBackendLDAP *self, EContact *contact, const gchar *ldap_attr, GError **error);
 static gboolean category_compare (EBookBackendLDAP *self, EContact *contact1, EContact *contact2, const gchar *ldap_attr);
 
+static void jabber_populate (EBookBackendLDAP *self, EContact *contact, gchar **values);
+static struct berval ** jabber_ber (EBookBackendLDAP *self, EContact *contact, const gchar *ldap_attr, GError **error);
+static gboolean jabber_compare (EBookBackendLDAP *self, EContact *contact1, EContact *contact2, const gchar *ldap_attr);
+
 static void home_address_populate (EBookBackendLDAP *self, EContact *card, gchar **values);
 static struct berval **home_address_ber (EBookBackendLDAP *self, EContact *card, const gchar *ldap_attr, GError **error);
 static gboolean home_address_compare (EBookBackendLDAP *self, EContact *ecard1, EContact * ecard2, const gchar *ldap_attr);
@@ -362,6 +353,7 @@ static struct prop_info {
 
 	/* misc fields */
 	CONTACT_STRING_PROP    (E_CONTACT_HOMEPAGE_URL,  "labeledURI"),
+	COMPLEX_PROP  (E_CONTACT_IM_JABBER, "jid", jabber_populate, jabber_ber, jabber_compare),
 	/* map nickname to the displayName with the evo scheme, or possibly prefill the file-as without the evo scheme */
 	COMPLEX_PROP   (E_CONTACT_NICKNAME, "displayName", nickname_populate, nickname_ber, nickname_compare),
 	E_STRING_PROP  (E_CONTACT_SPOUSE,      "spouseName"),
@@ -2228,6 +2220,7 @@ get_contact_dtor (LDAPOp *op)
 typedef struct {
 	LDAPOp op;
 	GSList *contacts;
+	struct berval *cookie;
 } LDAPGetContactListOp;
 
 static void
@@ -2363,6 +2356,8 @@ contact_list_dtor (LDAPOp *op)
 	LDAPGetContactListOp *contact_list_op = (LDAPGetContactListOp *) op;
 
 	g_slist_free_full (contact_list_op->contacts, g_object_unref);
+
+	g_clear_pointer (&contact_list_op->cookie, ber_bvfree);
 
 	g_free (contact_list_op);
 }
@@ -3135,6 +3130,96 @@ category_compare (EBookBackendLDAP *self,
 		equal = !strcmp (categories1, categories2);
 	else
 		equal = (categories1 == categories2);
+
+	return equal;
+}
+
+static void
+jabber_populate (EBookBackendLDAP *self,
+		 EContact *contact,
+		 gchar **values)
+{
+	GList *jabber_ids = NULL;
+	gint ii;
+
+	for (ii = 0; values[ii]; ii++) {
+		jabber_ids = g_list_append (jabber_ids, values[ii]);
+	}
+
+	e_contact_set (contact, E_CONTACT_IM_JABBER, jabber_ids);
+
+	g_list_free (jabber_ids);
+}
+
+static struct berval **
+jabber_ber (EBookBackendLDAP *self,
+	    EContact *contact,
+	    const gchar *ldap_attr,
+	    GError **error)
+{
+	struct berval **result;
+	GList *jabber_ids, *iter;
+	guint num, ii;
+
+	jabber_ids = e_contact_get (contact, E_CONTACT_IM_JABBER);
+	num = g_list_length (jabber_ids);
+
+	if (num == 0)
+		return NULL;
+
+	result = g_new0 (struct berval *, num + 1);
+
+	ii = 0;
+	for (iter = jabber_ids; iter; iter = g_list_next (iter)) {
+		const gchar *jabber_id = iter->data;
+
+		result[ii] = g_new (struct berval, 1);
+		result[ii]->bv_val = g_strdup (jabber_id);
+		result[ii]->bv_len = strlen (jabber_id);
+		ii++;
+	}
+
+	g_list_free_full (jabber_ids, g_free);
+
+	return result;
+}
+
+static gboolean
+jabber_compare (EBookBackendLDAP *self,
+		EContact *contact1,
+		EContact *contact2,
+		const gchar *ldap_attr)
+{
+	GList *jabber_ids1, *jabber_ids2, *l1, *l2;
+	gboolean equal = TRUE;
+
+	jabber_ids1 = e_contact_get (contact1, E_CONTACT_IM_JABBER);
+	jabber_ids2 = e_contact_get (contact2, E_CONTACT_IM_JABBER);
+
+	if (g_list_length (jabber_ids1) != g_list_length (jabber_ids2)) {
+		equal = FALSE;
+	} else {
+		for (l1 = jabber_ids1; l1 && equal; l1 = g_list_next (l1)) {
+			const gchar *jabber_id1 = l1->data;
+
+			equal = FALSE;
+
+			for (l2 = jabber_ids2; l2; l2 = g_list_next (l2)) {
+				gchar *jabber_id2 = l2->data;
+
+				if (!g_strcmp0 (jabber_id1, jabber_id2)) {
+					jabber_ids2 = g_list_remove_link (jabber_ids2, l2);
+					g_free (jabber_id2);
+					g_list_free_1 (l2);
+					equal = TRUE;
+					break;
+				}
+			}
+		}
+	}
+
+	g_list_free_full (jabber_ids1, g_free);
+	g_list_free_full (jabber_ids2, g_free);
 
 	return equal;
 }
@@ -4278,7 +4363,8 @@ e_book_backend_ldap_build_query (EBookBackendLDAP *bl,
 		}
 		g_rec_mutex_unlock (&eds_ldap_handler_lock);
 	} else {
-		if (g_strcmp0 (query, "(contains \"x-evolution-any-field\" \"\")") != 0)
+		if (g_strcmp0 (query, "(contains \"x-evolution-any-field\" \"\")") != 0 &&
+		    g_strcmp0 (query, "(contains \"x-evolution-any-field\"  \"\")") != 0)
 			g_warning ("LDAP: conversion of '%s' to ldap query string failed", query);
 		retval = NULL;
 	}
@@ -4974,12 +5060,75 @@ generate_cache_handler (LDAPOp *op,
 			g_rec_mutex_unlock (&eds_ldap_handler_lock);
 		}
 	} else {
+		LDAPControl **serverctrls = NULL;
+		struct berval *cookie = NULL;
+		ber_int_t total_count = 0;
+		gint ldap_err = LDAP_SUCCESS;
+		gint parse_err = LDAP_CONTROL_NOT_FOUND;
 		GSList *l;
 		gint contact_num = 0;
 		gchar *status_msg;
 		GDateTime *now;
 		gchar *update_str;
 		GList *contacts, *link;
+
+		if (msg_type == LDAP_RES_SEARCH_RESULT) {
+			g_rec_mutex_lock (&eds_ldap_handler_lock);
+			if (bl->priv->ldap) {
+				ldap_parse_result (bl->priv->ldap, res, &ldap_err, NULL, NULL, NULL, &serverctrls, 0);
+				if (serverctrls) {
+					parse_err = ldap_parse_page_control (bl->priv->ldap, serverctrls, &total_count, &cookie);
+				}
+			}
+			g_rec_mutex_unlock (&eds_ldap_handler_lock);
+
+			g_clear_pointer (&serverctrls, ldap_controls_free);
+
+			if (parse_err == LDAP_SUCCESS && cookie && cookie->bv_len > 0) {
+				LDAPControl *page_ctrl = NULL;
+				LDAPControl *server_controls[2] = { NULL, NULL };
+				gint page_size = 1000;
+				gint contact_list_msgid = -1;
+
+				if (bl->priv->ldap_limit > 0)
+					page_size = bl->priv->ldap_limit;
+
+				g_clear_pointer (&contact_list_op->cookie, ber_bvfree);
+				contact_list_op->cookie = g_steal_pointer (&cookie);
+
+				g_rec_mutex_lock (&eds_ldap_handler_lock);
+				if (bl->priv->ldap) {
+					ldap_create_page_control (bl->priv->ldap, page_size, contact_list_op->cookie, 0, &page_ctrl);
+					if (page_ctrl)
+						server_controls[0] = page_ctrl;
+
+					ldap_err = ldap_search_ext (
+						bl->priv->ldap,
+						bl->priv->ldap_rootdn,
+						bl->priv->ldap_scope,
+						"(cn=*)",
+						NULL, 0,
+						server_controls[0] ? server_controls : NULL,
+						NULL,
+						NULL, /* XXX timeout */
+						LDAP_NO_LIMIT, &contact_list_msgid);
+
+					if (page_ctrl)
+						ldap_control_free (page_ctrl);
+				} else {
+					ldap_err = LDAP_SERVER_DOWN;
+				}
+				g_rec_mutex_unlock (&eds_ldap_handler_lock);
+
+				if (ldap_err == LDAP_SUCCESS && contact_list_msgid != -1) {
+					ldap_op_change_id (op, contact_list_msgid);
+					return;
+				}
+			}
+
+			g_clear_pointer (&cookie, ber_bvfree);
+			g_clear_pointer (&contact_list_op->cookie, ber_bvfree);
+		}
 
 		contacts = e_book_backend_cache_get_contacts (bl->priv->cache, NULL);
 		for (link = contacts; link; link = g_list_next (link)) {
@@ -5005,12 +5154,14 @@ generate_cache_handler (LDAPOp *op,
 			e_book_backend_cache_add_contact (bl->priv->cache, contact);
 			e_book_backend_notify_update (op->backend, contact);
 		}
-		e_book_backend_cache_set_populated (bl->priv->cache);
-		now = g_date_time_new_now_utc ();
-		update_str = g_date_time_format_iso8601 (now);
-		g_date_time_unref (now);
-		e_book_backend_cache_set_time (bl->priv->cache, update_str);
-		g_free (update_str);
+		if (ldap_err == LDAP_SUCCESS) {
+			e_book_backend_cache_set_populated (bl->priv->cache);
+			now = g_date_time_new_now_utc ();
+			update_str = g_date_time_format_iso8601 (now);
+			g_date_time_unref (now);
+			e_book_backend_cache_set_time (bl->priv->cache, update_str);
+			g_free (update_str);
+		}
 		e_file_cache_thaw_changes (E_FILE_CACHE (bl->priv->cache));
 		e_book_backend_notify_complete (op->backend);
 		ldap_op_finished (op);
@@ -5030,6 +5181,9 @@ generate_cache_dtor (LDAPOp *op)
 	EBookBackendLDAP *ldap_backend = E_BOOK_BACKEND_LDAP (op->backend);
 
 	g_slist_free_full (contact_list_op->contacts, g_object_unref);
+
+	g_clear_pointer (&contact_list_op->cookie, ber_bvfree);
+
 	g_free (contact_list_op);
 
 	g_rec_mutex_lock (&eds_ldap_handler_lock);
@@ -5107,16 +5261,34 @@ generate_cache (EBookBackendLDAP *book_backend_ldap)
 	g_rec_mutex_unlock (&eds_ldap_handler_lock);
 
 	do {
+		LDAPControl *page_ctrl = NULL;
+		LDAPControl *server_controls[2] = { NULL, NULL };
+		gint page_size = 1000;
+
+		if (priv->ldap_limit > 0)
+			page_size = priv->ldap_limit;
+
 		g_rec_mutex_lock (&eds_ldap_handler_lock);
 		if (priv->ldap) {
+			ldap_create_page_control (
+				priv->ldap, page_size,
+				NULL, 0, &page_ctrl);
+			if (page_ctrl)
+				server_controls[0] = page_ctrl;
+
 			ldap_error = ldap_search_ext (
 				priv->ldap,
 				priv->ldap_rootdn,
 				priv->ldap_scope,
 				"(cn=*)",
-				NULL, 0, NULL, NULL,
+				NULL, 0,
+				server_controls[0] ? server_controls : NULL,
+				NULL,
 				NULL, /* XXX timeout */
 				LDAP_NO_LIMIT, &contact_list_msgid);
+
+			if (page_ctrl)
+				ldap_control_free (page_ctrl);
 		} else {
 			ldap_error = LDAP_SERVER_DOWN;
 		}

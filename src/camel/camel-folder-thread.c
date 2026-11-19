@@ -1,20 +1,31 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
+
+/**
+ * CamelFolderThread:
+ *
+ * Message threading / conversation grouping.
+ *
+ * #CamelFolderThread computes conversation threads from a list of messages
+ * in a folder, based on the In-Reply-To and References headers as described
+ * by Jamie Zawinski's threading algorithm (used by Netscape 3 Mail).
+ *
+ * Because threading operates on pre-computed hashes from #CamelMessageInfo
+ * rather than parsing raw message content, it is very fast.
+ *
+ * The result is a tree of #CamelFolderThreadNode structures accessible via
+ * the `tree` field of the #CamelFolderThread object. Each node carries a
+ * pointer to its #CamelMessageInfo and links to its parent, next sibling,
+ * and first child, making it straightforward to build a tree-view model.
+ *
+ * An optional subject-based fallback algorithm can be enabled (by passing
+ * `thread_subject = TRUE` to camel_folder_thread_new()) to find conversation
+ * parts when In-Reply-To / References headers are absent, by matching
+ * "Re: " prefixes on subject lines.
+ **/
 
 #include "evolution-data-server-config.h"
 

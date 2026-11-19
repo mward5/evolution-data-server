@@ -1,22 +1,9 @@
-/* camel-store.h : Abstract class for an email store
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Bertrand Guiheneuf <bertrand@helixcode.com>
- *          Michael Zucchi <NotZed@ximian.com>
- *          Jeffrey Stedfast <fejj@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
+ * SPDX-FileContributor: Michael Zucchi <NotZed@ximian.com>
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
 
 #if !defined (__CAMEL_H_INSIDE__) && !defined (CAMEL_COMPILATION)
@@ -206,8 +193,17 @@ struct _CamelStoreClass {
 	gboolean	(*get_can_auto_save_changes)
 						(CamelStore *store);
 
+	gboolean	(*search_multimailbox_sync)
+						(CamelStore *store,
+						 GPtrArray *folders, /* CamelFolder * */
+						 const gchar *search_key,
+						 const GPtrArray *words,
+						 GHashTable **out_results, /* gchar *folder_name ~> GPtrArray { gchar *uids } */
+						 GCancellable *cancellable,
+						 GError **error);
+
 	/* Padding for future expansion */
-	gpointer reserved_methods[19];
+	gpointer reserved_methods[18];
 
 	/* Signals */
 	void		(*folder_created)	(CamelStore *store,
@@ -259,6 +255,14 @@ CamelFolderInfo *
 		camel_folder_info_clone		(CamelFolderInfo *fi);
 gboolean	camel_store_can_refresh_folder	(CamelStore *store,
 						 CamelFolderInfo *info,
+						 GError **error);
+gboolean	camel_store_search_multimailbox_sync
+						(CamelStore *store,
+						 GPtrArray *folders, /* CamelFolder * */
+						 const gchar *search_key,
+						 const GPtrArray *words,
+						 GHashTable **out_results, /* gchar *folder_name ~> GPtrArray { gchar *uids } */
+						 GCancellable *cancellable,
 						 GError **error);
 
 CamelFolder *	camel_store_get_folder_sync	(CamelStore *store,

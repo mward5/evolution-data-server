@@ -1,17 +1,6 @@
 /*
- * Copyright (C) 2020 Red Hat (www.redhat.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: (C) 2020 Red Hat (www.redhat.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -1200,7 +1189,8 @@ ecb_webdav_notes_save_component_sync (ECalMetaBackend *meta_backend,
 
 			counter++;
 		} while (!success && new_filename && !g_cancellable_is_cancelled (cancellable) &&
-			 g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_PRECONDITION_FAILED));
+			 g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_PRECONDITION_FAILED) &&
+			 !g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_BAD_REQUEST));
 
 		if (success && new_filename && extra && *extra) {
 			/* The name on the server changed, remove the old file */
@@ -1292,10 +1282,15 @@ ecb_webdav_notes_save_component_sync (ECalMetaBackend *meta_backend,
 	g_free (href);
 	g_free (etag);
 
-	if (overwrite_existing && g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_PRECONDITION_FAILED)) {
+	if (overwrite_existing && g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_BAD_REQUEST)) {
 		g_clear_error (&local_error);
 
-		/* Pretend success when using the serer version on conflict,
+		/* Google can reject saving. Pretend success to clear from queue; next refresh will sync. */
+		success = TRUE;
+	} else if (overwrite_existing && g_error_matches (local_error, E_SOUP_SESSION_ERROR, SOUP_STATUS_PRECONDITION_FAILED)) {
+		g_clear_error (&local_error);
+
+		/* Pretend success when using the server version on conflict,
 		   the component will be updated during the refresh */
 		if (conflict_resolution == E_CONFLICT_RESOLUTION_KEEP_SERVER)
 			success = TRUE;

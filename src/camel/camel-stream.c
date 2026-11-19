@@ -1,21 +1,39 @@
-/* camel-stream.c : abstract class for a stream
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Bertrand Guiheneuf <bertrand@helixcode.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
  */
+
+/**
+ * CamelStream:
+ *
+ * Abstract base class for I/O streams.
+ *
+ * #CamelStream is an abstract base class that implements a simple read/write
+ * stream interface. It is used throughout Camel for I/O abstraction, allowing
+ * the same message handling code to work with files, sockets, memory buffers,
+ * and more.
+ *
+ * The stream hierarchy includes:
+ *
+ * - **#CamelStreamBuffer** — provides line-buffering on top of another stream,
+ *   including a convenient camel_stream_buffer_read_line() function.
+ *
+ * - **#CamelStreamFilter** — a sophisticated stream that runs data through a
+ *   chain of #CamelMimeFilter instances for efficient pipelined processing.
+ *
+ * - **#CamelStreamFs** — a file-descriptor-backed stream.
+ *
+ * - **#CamelStreamMem** — a memory-backed stream backed by a #GByteArray.
+ *
+ * - **#CamelStreamNull** — a null stream that discards all output; useful for
+ *   measuring encoded output size.
+ *
+ * - **#CamelStreamProcess** — a stream backed by a child process.
+ *
+ * Utility functions such as camel_stream_write_string() and
+ * camel_stream_write_to_stream() are provided for common operations.
+ **/
 
 #include "evolution-data-server-config.h"
 

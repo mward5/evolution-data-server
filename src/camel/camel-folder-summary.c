@@ -1,20 +1,32 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
+
+/**
+ * CamelFolderSummary:
+ *
+ * Manages cached message metadata for a folder.
+ *
+ * #CamelFolderSummary manages lists of lightweight #CamelMessageInfo
+ * structures that cache metadata about each message in a folder (flags, UID,
+ * subject, from, date, size, etc.). This avoids the need to re-parse messages
+ * from storage every time a folder is opened or displayed.
+ *
+ * The summary is designed to be persisted to disk so that expensive metadata
+ * computation only needs to happen once. It uses a versioned binary file
+ * format that supports subclassing: backend-specific implementations can add
+ * their own fields to each record.
+ *
+ * The base class provides almost all required functionality. Backends
+ * typically only need to subclass it to store additional per-message
+ * information specific to their storage format.
+ *
+ * If a #CamelIndex is set via camel_folder_summary_set_index(), the
+ * summariser will also generate full-text index entries (for text/... parts)
+ * when building the summary from message content.
+ **/
 
 #include "evolution-data-server-config.h"
 
@@ -104,6 +116,7 @@ struct _CamelFolderSummaryPrivate {
 
 	gboolean is_junk_folder;
 	gboolean is_trash_folder;
+	gulong folder_flags_handler_id;
 };
 
 /* this should probably be conditional on it existing */
@@ -181,6 +194,32 @@ free_o_name (gpointer key,
 }
 
 static void
+folder_summary_folder_flags_notify_cb (GObject *folder_object,
+				       GParamSpec *param,
+				       gpointer user_data)
+{
+	CamelFolderSummary *summary = user_data;
+	CamelFolder *folder = CAMEL_FOLDER (folder_object);
+	guint32 folder_flags;
+	gboolean new_is_junk;
+	gboolean new_is_trash;
+
+	folder_flags = camel_folder_get_flags (folder);
+
+	new_is_junk = (folder_flags & CAMEL_FOLDER_IS_JUNK) != 0;
+	new_is_trash = (folder_flags & CAMEL_FOLDER_IS_TRASH) != 0;
+
+	if (new_is_junk == summary->priv->is_junk_folder &&
+	    new_is_trash == summary->priv->is_trash_folder)
+		return;
+
+	summary->priv->is_junk_folder = new_is_junk;
+	summary->priv->is_trash_folder = new_is_trash;
+
+	camel_folder_summary_touch (summary);
+}
+
+static void
 folder_summary_constructed (GObject *object)
 {
 	CamelFolderSummary *self = CAMEL_FOLDER_SUMMARY (object);
@@ -229,6 +268,10 @@ folder_summary_constructed (GObject *object)
 
 		self->priv->is_junk_folder = (folder_flags & CAMEL_FOLDER_IS_JUNK) != 0;
 		self->priv->is_trash_folder = (folder_flags & CAMEL_FOLDER_IS_TRASH) != 0;
+
+		self->priv->folder_flags_handler_id = g_signal_connect (
+			self->priv->folder, "notify::flags",
+			G_CALLBACK (folder_summary_folder_flags_notify_cb), self);
 	}
 }
 
@@ -262,6 +305,10 @@ folder_summary_dispose (GObject *object)
 	g_clear_object (&summary->priv->filter_index);
 
 	if (summary->priv->folder) {
+		if (summary->priv->folder_flags_handler_id) {
+			g_signal_handler_disconnect (summary->priv->folder, summary->priv->folder_flags_handler_id);
+			summary->priv->folder_flags_handler_id = 0;
+		}
 		g_object_weak_unref (G_OBJECT (summary->priv->folder), (GWeakNotify) g_nullify_pointer, &summary->priv->folder);
 		summary->priv->folder = NULL;
 	}

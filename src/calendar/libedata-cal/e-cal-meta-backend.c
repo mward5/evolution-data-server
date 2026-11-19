@@ -1,17 +1,6 @@
 /*
- * Copyright (C) 2017 Red Hat, Inc. (www.redhat.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: (C) 2017 Red Hat, Inc. (www.redhat.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 /**
@@ -1167,6 +1156,7 @@ ecmb_load_component_wrapper_sync (ECalMetaBackend *meta_backend,
 			ECalComponent *comp = e_cal_component_new_from_icalcomponent (i_cal_component_clone (subcomp));
 
 			if (comp) {
+				e_cal_util_sanitize_untrusted (e_cal_component_get_icalcomponent (comp));
 				new_instances = g_slist_prepend (new_instances, comp);
 
 				if (!loaded_uid)
@@ -1179,6 +1169,7 @@ ecmb_load_component_wrapper_sync (ECalMetaBackend *meta_backend,
 		icomp = NULL;
 
 		if (comp) {
+			e_cal_util_sanitize_untrusted (e_cal_component_get_icalcomponent (comp));
 			new_instances = g_slist_prepend (new_instances, comp);
 
 			if (!loaded_uid)
@@ -2575,6 +2566,8 @@ ecmb_receive_object_sync (ECalMetaBackend *meta_backend,
 		g_propagate_error (error, e_cal_client_error_create (E_CAL_CLIENT_ERROR_INVALID_OBJECT, NULL));
 		return FALSE;
 	}
+
+	e_cal_util_sanitize_untrusted (e_cal_component_get_icalcomponent (comp));
 
 	cal_backend = E_CAL_BACKEND (meta_backend);
 	registry = e_cal_backend_get_registry (cal_backend);

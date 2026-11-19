@@ -1,20 +1,27 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Jeffrey Stedfast <fejj@novell.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@novell.com>
  */
+
+/**
+ * CamelOfflineStore:
+ *
+ * Base class for offline-capable mail stores.
+ *
+ * #CamelOfflineStore is a #CamelStore subclass that any remote backend
+ * supporting offline operation should extend instead of #CamelStore directly.
+ *
+ * It adds a network availability state (online / offline) that client code
+ * can query and change via camel_offline_store_get_online() and
+ * camel_offline_store_set_online(). When going offline, the base class
+ * implementation synchronises all #CamelOfflineFolder instances that are
+ * currently active.
+ *
+ * Backends using #CamelOfflineStore should also provide
+ * #CamelOfflineFolder-based folders for any folders representing remote data,
+ * so that the per-folder offline sync behaviour can be controlled.
+ **/
 
 #include "evolution-data-server-config.h"
 

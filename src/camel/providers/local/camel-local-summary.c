@@ -1,19 +1,7 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -631,6 +619,7 @@ local_summary_decode_x_evolution (CamelLocalSummary *cls,
 {
 	struct _camel_header_param *params, *scan;
 	guint32 uid, flags;
+	const gchar *const_header;
 	gchar *header;
 	gint i;
 	gchar uidstr[20];
@@ -653,9 +642,9 @@ local_summary_decode_x_evolution (CamelLocalSummary *cls,
 		return 0;
 
 	/* check for additional data */
-	header = strchr (xev, ';');
-	if (header) {
-		params = camel_header_param_list_decode (header + 1);
+	const_header = strchr (xev, ';');
+	if (const_header) {
+		params = camel_header_param_list_decode (const_header + 1);
 		scan = params;
 		while (scan) {
 			if (!g_ascii_strcasecmp (scan->name, "flags")) {

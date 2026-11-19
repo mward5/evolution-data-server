@@ -1,20 +1,30 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Jeffrey Stedfast <fejj@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
+
+/**
+ * CamelCipherContext:
+ *
+ * Encryption and digital signature interface.
+ *
+ * #CamelCipherContext is an abstract base class that provides a unified
+ * interface for encrypting, signing, decrypting, and verifying #CamelMimePart
+ * message parts.
+ *
+ * Concrete implementations include #CamelGpgContext for OpenPGP/GnuPG and
+ * #CamelSMIMEContext for S/MIME.
+ *
+ * Each implementation sets protocol strings (sign_protocol,
+ * encrypt_protocol, key_protocol) that are used to populate the appropriate
+ * MIME header fields in signed and encrypted parts.
+ *
+ * Because a single message part may have multiple layers of signing or
+ * encryption using different algorithms, the validity result is represented
+ * as a tree of #CamelCipherValidity structures, each describing the
+ * signature or encryption status of one layer.
+ **/
 
 #include "evolution-data-server-config.h"
 

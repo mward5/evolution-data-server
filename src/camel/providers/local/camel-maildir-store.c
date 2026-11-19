@@ -1,19 +1,7 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -169,8 +157,14 @@ maildir_store_create_folder_sync (CamelStore *store,
 	else
 		name = g_strdup_printf ("%s", folder_name);
 
-	folder = maildir_store_get_folder_sync (
-		store, name, CAMEL_STORE_FOLDER_CREATE, cancellable, error);
+	if (camel_store_db_get_folder_id (camel_store_get_db (store), name) > 0) {
+		g_set_error (
+			error, G_IO_ERROR, G_IO_ERROR_EXISTS,
+			_("Folder %s already exists"), name);
+		goto exit;
+	}
+
+	folder = maildir_store_get_folder_sync (store, name, CAMEL_STORE_FOLDER_CREATE, cancellable, error);
 	if (folder) {
 		g_object_unref (folder);
 		info = CAMEL_STORE_GET_CLASS (store)->get_folder_info_sync (

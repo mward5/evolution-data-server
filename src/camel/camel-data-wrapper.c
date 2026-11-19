@@ -1,20 +1,42 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Bertrand Guiheneuf <bertrand@helixcode.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
  */
+
+/**
+ * CamelDataWrapper
+ *
+ * Base class for structured MIME data access.
+ *
+ * #CamelDataWrapper is the base class used to implement structured MIME data
+ * access. It serves as the programmatic interface for creating and reading
+ * MIME-encoded data, primarily RFC 822 messages.
+ *
+ * The class hierarchy rooted at #CamelDataWrapper closely parallels the
+ * structure of a MIME message:
+ *
+ * - #CamelDataWrapper itself holds unstructured leaf data (e.g. an attachment
+ *   body) together with its content-type and transfer encoding.
+ *
+ * - #CamelMedium extends it with named headers and a separate content object.
+ *
+ * - #CamelMimePart adds structured accessors for all standard Content-*
+ *   headers (Content-Type, Content-Disposition, Content-Transfer-Encoding,
+ *   etc.) and can be constructed from a #CamelMimeParser.
+ *
+ * - #CamelMimeMessage is a fully-fledged RFC 822 message with From/To/Subject
+ *   and other message-level headers, built on top of #CamelMimePart.
+ *
+ * - #CamelMultipart and its subclasses (#CamelMultipartSigned,
+ *   #CamelMultipartEncrypted) handle multipart MIME containers.
+ *
+ * The i/o interface is stream-based: camel_data_wrapper_write_to_stream()
+ * serialises the object into encoded MIME form, while
+ * camel_data_wrapper_decode_to_stream() writes the decoded content (stripping
+ * the content-transfer-encoding). camel_data_wrapper_construct_from_stream()
+ * is the main entry point for parsing raw MIME data into an object hierarchy.
+ **/
 
 #include "evolution-data-server-config.h"
 

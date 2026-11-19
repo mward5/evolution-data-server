@@ -1,18 +1,5 @@
 /*
- * e-source-registry.c
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 /**
@@ -1050,12 +1037,23 @@ source_registry_object_manager_running (gpointer data)
 	return FALSE;
 }
 
+static gboolean
+source_registry_object_manager_thread_stop_waiting_cb (gpointer user_data)
+{
+	GMainLoop *main_loop = user_data;
+
+	g_main_loop_quit (main_loop);
+
+	return FALSE;
+}
+
 static gpointer
 source_registry_object_manager_thread (gpointer data)
 {
 	GDBusObjectManager *object_manager;
 	ThreadClosure *closure = data;
 	GSource *idle_source;
+	GSource *timeout_source;
 	GList *list, *link;
 	gulong object_added_handler_id = 0;
 	gulong object_removed_handler_id = 0;
@@ -1160,6 +1158,20 @@ notify:
 		g_signal_handler_disconnect (
 			object_manager, notify_name_owner_handler_id);
 		g_object_unref (object_manager);
+
+		/* Give any last object manager scheduled main context events a chance
+		   to be delivered in this thread; it's to workaround GDBus race when it
+		   can deliver some D-Bus signals in the short window before this main
+		   context is freed and the thread joined. */
+		timeout_source = g_timeout_source_new (50);
+		g_source_set_callback (
+			timeout_source,
+			source_registry_object_manager_thread_stop_waiting_cb,
+			closure->main_loop, NULL);
+		g_source_attach (timeout_source, closure->main_context);
+		g_source_unref (timeout_source);
+
+		g_main_loop_run (closure->main_loop);
 	}
 
 	/* Make sure the queue is flushed, because items in it can reference
@@ -2199,9 +2211,11 @@ e_source_registry_create_sources_sync (ESourceRegistry *registry,
 			g_main_loop_ref (create_context->main_loop),
 			(GDestroyNotify) g_main_loop_unref);
 		g_source_attach (timeout_source, create_context->main_context);
-		g_source_unref (timeout_source);
 
 		g_main_loop_run (create_context->main_loop);
+
+		g_source_destroy (timeout_source);
+		g_source_unref (timeout_source);
 	}
 
 	g_signal_handler_disconnect (

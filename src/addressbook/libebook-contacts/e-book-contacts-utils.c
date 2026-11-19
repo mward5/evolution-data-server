@@ -1,15 +1,5 @@
 /*
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -171,7 +161,7 @@ e_book_util_conflict_resolution_to_operation_flags (EConflictResolution conflict
  * e_book_util_foreach_address:
  * @email_address: one or more email addresses as string
  * @func: (scope call): a function to call for each email
- * @user_data (closure func): user data passed to @func
+ * @user_data: (closure func): user data passed to @func
  *
  * Parses the @email_address and calls @func for each found address.
  * The first parameter of the @func is the name, the second parameter

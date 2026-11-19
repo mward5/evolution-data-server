@@ -1,16 +1,5 @@
 /*
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include <stdlib.h>
@@ -1930,6 +1919,418 @@ test_remove_as_all (ETestServerFixture *fixture,
 	}
 }
 
+static void
+test_init_recur_task (ETestServerFixture *fixture,
+		      gconstpointer user_data)
+{
+	ECalClient *cal_client;
+	ICalComponent *vtodo;
+	ICalTime *due;
+	gboolean success;
+
+	cal_client = E_TEST_SERVER_UTILS_SERVICE (fixture, ECalClient);
+
+	/* 1) DUE after DTSTART should be preserved (evo-I#3350) */
+	vtodo = i_cal_component_new_from_string (
+		"BEGIN:VTODO\r\n"
+		"UID:recur-task-1\r\n"
+		"DTSTART:20250708T183000Z\r\n"
+		"DUE:20250708T190000Z\r\n"
+		"RRULE:FREQ=MONTHLY;BYMONTHDAY=8\r\n"
+		"SUMMARY:monthly task\r\n"
+		"END:VTODO\r\n");
+	g_assert_nonnull (vtodo);
+
+	success = e_cal_util_init_recur_task_sync (vtodo, cal_client, NULL, NULL);
+	g_assert_true (success);
+
+	due = i_cal_component_get_due (vtodo);
+	g_assert_nonnull (due);
+	g_assert_cmpint (i_cal_time_get_year (due), ==, 2025);
+	g_assert_cmpint (i_cal_time_get_month (due), ==, 7);
+	g_assert_cmpint (i_cal_time_get_day (due), ==, 8);
+	g_assert_cmpint (i_cal_time_get_hour (due), ==, 19);
+	g_assert_cmpint (i_cal_time_get_minute (due), ==, 0);
+	g_clear_object (&due);
+	g_clear_object (&vtodo);
+
+	/* 2) No DUE set -- should be computed as next occurrence */
+	vtodo = i_cal_component_new_from_string (
+		"BEGIN:VTODO\r\n"
+		"UID:recur-task-2\r\n"
+		"DTSTART:20250708T183000Z\r\n"
+		"RRULE:FREQ=MONTHLY;BYMONTHDAY=8\r\n"
+		"SUMMARY:monthly task no due\r\n"
+		"END:VTODO\r\n");
+	g_assert_nonnull (vtodo);
+
+	success = e_cal_util_init_recur_task_sync (vtodo, cal_client, NULL, NULL);
+	g_assert_true (success);
+
+	due = i_cal_component_get_due (vtodo);
+	g_assert_nonnull (due);
+	g_assert_false (i_cal_time_is_null_time (due));
+	g_assert_cmpint (i_cal_time_get_year (due), ==, 2025);
+	g_assert_cmpint (i_cal_time_get_month (due), ==, 8);
+	g_assert_cmpint (i_cal_time_get_day (due), ==, 8);
+	g_clear_object (&due);
+	g_clear_object (&vtodo);
+
+	/* 3) Non-recurring task -- should be left untouched */
+	vtodo = i_cal_component_new_from_string (
+		"BEGIN:VTODO\r\n"
+		"UID:non-recur-task\r\n"
+		"DTSTART:20250708T183000Z\r\n"
+		"DUE:20250709T183000Z\r\n"
+		"SUMMARY:one-shot task\r\n"
+		"END:VTODO\r\n");
+	g_assert_nonnull (vtodo);
+
+	success = e_cal_util_init_recur_task_sync (vtodo, cal_client, NULL, NULL);
+	g_assert_true (success);
+
+	due = i_cal_component_get_due (vtodo);
+	g_assert_nonnull (due);
+	g_assert_cmpint (i_cal_time_get_year (due), ==, 2025);
+	g_assert_cmpint (i_cal_time_get_month (due), ==, 7);
+	g_assert_cmpint (i_cal_time_get_day (due), ==, 9);
+	g_clear_object (&due);
+	g_clear_object (&vtodo);
+
+	/* 4) DUE before DTSTART (invalid) -- should be fixed up */
+	vtodo = i_cal_component_new_from_string (
+		"BEGIN:VTODO\r\n"
+		"UID:recur-task-4\r\n"
+		"DTSTART:20250708T183000Z\r\n"
+		"DUE:20250608T183000Z\r\n"
+		"RRULE:FREQ=MONTHLY;BYMONTHDAY=8\r\n"
+		"SUMMARY:monthly task bad due\r\n"
+		"END:VTODO\r\n");
+	g_assert_nonnull (vtodo);
+
+	success = e_cal_util_init_recur_task_sync (vtodo, cal_client, NULL, NULL);
+	g_assert_true (success);
+
+	due = i_cal_component_get_due (vtodo);
+	g_assert_nonnull (due);
+	g_assert_false (i_cal_time_is_null_time (due));
+	g_assert_cmpint (i_cal_time_get_year (due), ==, 2025);
+	g_assert_cmpint (i_cal_time_get_month (due), ==, 8);
+	g_assert_cmpint (i_cal_time_get_day (due), ==, 8);
+	g_clear_object (&due);
+	g_clear_object (&vtodo);
+
+	/* 5) Weekly recurrence with DUE after DTSTART -- DUE preserved */
+	vtodo = i_cal_component_new_from_string (
+		"BEGIN:VTODO\r\n"
+		"UID:recur-task-5\r\n"
+		"DTSTART:20250708T100000Z\r\n"
+		"DUE:20250708T120000Z\r\n"
+		"RRULE:FREQ=WEEKLY\r\n"
+		"SUMMARY:weekly task\r\n"
+		"END:VTODO\r\n");
+	g_assert_nonnull (vtodo);
+
+	success = e_cal_util_init_recur_task_sync (vtodo, cal_client, NULL, NULL);
+	g_assert_true (success);
+
+	due = i_cal_component_get_due (vtodo);
+	g_assert_nonnull (due);
+	g_assert_cmpint (i_cal_time_get_year (due), ==, 2025);
+	g_assert_cmpint (i_cal_time_get_month (due), ==, 7);
+	g_assert_cmpint (i_cal_time_get_day (due), ==, 8);
+	g_assert_cmpint (i_cal_time_get_hour (due), ==, 12);
+	g_clear_object (&due);
+	g_clear_object (&vtodo);
+}
+
+#define test_param(_name, _value) G_STMT_START { \
+	gchar *param; \
+	param = i_cal_property_get_parameter_as_string (prop, _name); \
+	g_assert_cmpstr (param, ==, _value); \
+	g_free (param); \
+	} G_STMT_END
+
+static void
+test_sanitize_untrusted (void)
+{
+	ICalComponent *icomp;
+	ICalProperty *prop;
+	guint nth_attach;
+
+	/* first when all are fine */
+	icomp = i_cal_component_new_from_string (
+		"BEGIN:VEVENT\r\n"
+		"UID:1\r\n"
+		"SUMMARY:first\r\n"
+		"ATTACH;FILENAME=logo.png;FMTTYPE=image/png:https://gnome.org/logo.png\r\n"
+		"ATTACH;VALUE=BINARY;FILENAME=text.txt;ENCODING=BASE64:aGVsbG8K\r\n"
+		"ATTACH:https://gnome.org/\r\n"
+		"END:VEVENT\r\n");
+	g_assert_nonnull (icomp);
+
+	for (nth_attach = 0, prop = i_cal_component_get_first_property (icomp, I_CAL_ANY_PROPERTY);
+	     prop;
+	     g_object_unref (prop), prop = i_cal_component_get_next_property (icomp, I_CAL_ANY_PROPERTY)) {
+		if (i_cal_property_isa (prop) == I_CAL_UID_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_uid (prop), ==, "1");
+		} else if (i_cal_property_isa (prop) == I_CAL_SUMMARY_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_summary (prop), ==, "first");
+		} else if (i_cal_property_isa (prop) == I_CAL_ATTACH_PROPERTY) {
+			ICalAttach *attach;
+
+			attach = i_cal_property_get_attach (prop);
+			g_assert_nonnull (attach);
+
+			nth_attach++;
+
+			switch (nth_attach) {
+			case 1:
+				g_assert_true (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_url (attach), ==, "https://gnome.org/logo.png");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 2);
+				test_param ("filename", "logo.png");
+				test_param ("fmttype", "image/png");
+				break;
+			case 2:
+				g_assert_false (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_data (attach), ==, "aGVsbG8K");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 3);
+				test_param ("value", "BINARY");
+				test_param ("filename", "text.txt");
+				test_param ("encoding", "BASE64");
+				break;
+			case 3:
+				g_assert_true (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_url (attach), ==, "https://gnome.org/");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 0);
+				break;
+			default:
+				g_assert_not_reached ();
+			}
+
+			g_clear_object (&attach);
+		} else {
+			g_assert_not_reached ();
+		}
+	}
+
+	g_clear_object (&prop);
+
+	e_cal_util_sanitize_untrusted (icomp);
+
+	for (nth_attach = 0, prop = i_cal_component_get_first_property (icomp, I_CAL_ANY_PROPERTY);
+	     prop;
+	     g_object_unref (prop), prop = i_cal_component_get_next_property (icomp, I_CAL_ANY_PROPERTY)) {
+		if (i_cal_property_isa (prop) == I_CAL_UID_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_uid (prop), ==, "1");
+		} else if (i_cal_property_isa (prop) == I_CAL_SUMMARY_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_summary (prop), ==, "first");
+		} else if (i_cal_property_isa (prop) == I_CAL_ATTACH_PROPERTY) {
+			ICalAttach *attach;
+
+			attach = i_cal_property_get_attach (prop);
+			g_assert_nonnull (attach);
+
+			nth_attach++;
+
+			switch (nth_attach) {
+			case 1:
+				g_assert_true (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_url (attach), ==, "https://gnome.org/logo.png");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 2);
+				test_param ("filename", "logo.png");
+				test_param ("fmttype", "image/png");
+				break;
+			case 2:
+				g_assert_false (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_data (attach), ==, "aGVsbG8K");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 3);
+				test_param ("value", "BINARY");
+				test_param ("filename", "text.txt");
+				test_param ("encoding", "BASE64");
+				break;
+			case 3:
+				g_assert_true (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_url (attach), ==, "https://gnome.org/");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 0);
+				break;
+			default:
+				g_assert_not_reached ();
+			}
+
+			g_clear_object (&attach);
+		} else {
+			g_assert_not_reached ();
+		}
+	}
+
+	g_clear_object (&prop);
+	g_clear_object (&icomp);
+
+	/* then when some are bad */
+	icomp = i_cal_component_new_from_string (
+		"BEGIN:VEVENT\r\n"
+		"UID:2\r\n"
+		"SUMMARY:second\r\n"
+		"ATTACH;FILENAME=logo.png;FMTTYPE=image/png:file:///tmp/image.png\r\n"
+		"ATTACH;VALUE=BINARY;FILENAME=text.txt;ENCODING=BASE64:aGVsbG8K\r\n"
+		"ATTACH:cid:part-id\r\n"
+		"ATTACH:FiLe://y.z\r\n"
+		"END:VEVENT\r\n");
+	g_assert_nonnull (icomp);
+
+	for (nth_attach = 0, prop = i_cal_component_get_first_property (icomp, I_CAL_ANY_PROPERTY);
+	     prop;
+	     g_object_unref (prop), prop = i_cal_component_get_next_property (icomp, I_CAL_ANY_PROPERTY)) {
+		if (i_cal_property_isa (prop) == I_CAL_UID_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_uid (prop), ==, "2");
+		} else if (i_cal_property_isa (prop) == I_CAL_SUMMARY_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_summary (prop), ==, "second");
+		} else if (i_cal_property_isa (prop) == I_CAL_ATTACH_PROPERTY) {
+			ICalAttach *attach;
+
+			attach = i_cal_property_get_attach (prop);
+			g_assert_nonnull (attach);
+
+			nth_attach++;
+
+			switch (nth_attach) {
+			case 1:
+				g_assert_true (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_url (attach), ==, "file:///tmp/image.png");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 2);
+				test_param ("filename", "logo.png");
+				test_param ("fmttype", "image/png");
+				break;
+			case 2:
+				g_assert_false (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_data (attach), ==, "aGVsbG8K");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 3);
+				test_param ("value", "BINARY");
+				test_param ("filename", "text.txt");
+				test_param ("encoding", "BASE64");
+				break;
+			case 3:
+				g_assert_true (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_url (attach), ==, "cid:part-id");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 0);
+				break;
+			case 4:
+				g_assert_true (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_url (attach), ==, "FiLe://y.z");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 0);
+				break;
+			default:
+				g_assert_not_reached ();
+			}
+
+			g_clear_object (&attach);
+		} else {
+			g_assert_not_reached ();
+		}
+	}
+
+	g_clear_object (&prop);
+
+	e_cal_util_sanitize_untrusted (icomp);
+
+	for (nth_attach = 0, prop = i_cal_component_get_first_property (icomp, I_CAL_ANY_PROPERTY);
+	     prop;
+	     g_object_unref (prop), prop = i_cal_component_get_next_property (icomp, I_CAL_ANY_PROPERTY)) {
+		if (i_cal_property_isa (prop) == I_CAL_UID_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_uid (prop), ==, "2");
+		} else if (i_cal_property_isa (prop) == I_CAL_SUMMARY_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_summary (prop), ==, "second");
+		} else if (i_cal_property_isa (prop) == I_CAL_ATTACH_PROPERTY) {
+			ICalAttach *attach;
+
+			attach = i_cal_property_get_attach (prop);
+			g_assert_nonnull (attach);
+
+			nth_attach++;
+
+			switch (nth_attach) {
+			case 1:
+				g_assert_true (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_url (attach), ==, "xfile:///tmp/image.png");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 2);
+				test_param ("filename", "logo.png");
+				test_param ("fmttype", "image/png");
+				break;
+			case 2:
+				g_assert_false (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_data (attach), ==, "aGVsbG8K");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 3);
+				test_param ("value", "BINARY");
+				test_param ("filename", "text.txt");
+				test_param ("encoding", "BASE64");
+				break;
+			case 3:
+				g_assert_true (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_url (attach), ==, "cid:part-id");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 0);
+				break;
+			case 4:
+				g_assert_true (i_cal_attach_get_is_url (attach));
+				g_assert_cmpstr (i_cal_attach_get_url (attach), ==, "xFiLe://y.z");
+				g_assert_cmpint (i_cal_property_count_parameters (prop), ==, 0);
+				break;
+			default:
+				g_assert_not_reached ();
+			}
+
+			g_clear_object (&attach);
+		} else {
+			g_assert_not_reached ();
+		}
+	}
+
+	g_clear_object (&prop);
+	g_clear_object (&icomp);
+
+	/* then with no ATTACH */
+	icomp = i_cal_component_new_from_string (
+		"BEGIN:VEVENT\r\n"
+		"UID:3\r\n"
+		"SUMMARY:third\r\n"
+		"END:VEVENT\r\n");
+	g_assert_nonnull (icomp);
+
+	for (prop = i_cal_component_get_first_property (icomp, I_CAL_ANY_PROPERTY);
+	     prop;
+	     g_object_unref (prop), prop = i_cal_component_get_next_property (icomp, I_CAL_ANY_PROPERTY)) {
+		if (i_cal_property_isa (prop) == I_CAL_UID_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_uid (prop), ==, "3");
+		} else if (i_cal_property_isa (prop) == I_CAL_SUMMARY_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_summary (prop), ==, "third");
+		} else {
+			g_assert_not_reached ();
+		}
+	}
+
+	g_clear_object (&prop);
+
+	e_cal_util_sanitize_untrusted (icomp);
+
+	for (prop = i_cal_component_get_first_property (icomp, I_CAL_ANY_PROPERTY);
+	     prop;
+	     g_object_unref (prop), prop = i_cal_component_get_next_property (icomp, I_CAL_ANY_PROPERTY)) {
+		if (i_cal_property_isa (prop) == I_CAL_UID_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_uid (prop), ==, "3");
+		} else if (i_cal_property_isa (prop) == I_CAL_SUMMARY_PROPERTY) {
+			g_assert_cmpstr (i_cal_property_get_summary (prop), ==, "third");
+		} else {
+			g_assert_not_reached ();
+		}
+	}
+
+	g_clear_object (&prop);
+	g_clear_object (&icomp);
+}
+
+#undef test_param
+
 gint
 main (gint argc,
       gchar **argv)
@@ -1951,6 +2352,9 @@ main (gint argc,
 		e_test_server_utils_setup, test_time_convert_icaltime, e_test_server_utils_teardown);
 	g_test_add ("/ECalUtils/RemoveAsAll", ETestServerFixture, &test_closure_calendar,
 		e_test_server_utils_setup, test_remove_as_all, e_test_server_utils_teardown);
+	g_test_add ("/ECalUtils/InitRecurTask", ETestServerFixture, &test_closure_calendar,
+		e_test_server_utils_setup, test_init_recur_task, e_test_server_utils_teardown);
+	g_test_add_func ("/ECalUtils/SanitizeUntrusted", test_sanitize_untrusted);
 
 	return e_test_server_utils_run (argc, argv);
 }

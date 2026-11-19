@@ -1,25 +1,11 @@
 /*
- * camel-null-output-stream.c
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 /**
- * SECTION: camel-null-output-stream
- * @short_description: Null output stream
- * @include: camel/camel.h
- * @see_also: #GOutputStream
+ * CamelNullOutputStream:
+ *
+ * Null output stream.
  *
  * #CamelNullOutputStream is analogous to writing to /dev/null, except it
  * counts the total number of bytes written to it.  This is primarily useful

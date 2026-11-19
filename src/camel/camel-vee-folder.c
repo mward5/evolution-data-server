@@ -1,21 +1,33 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
- *          Jeffrey Stedfast <fejj@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
+
+/**
+ * CamelVeeFolder:
+ *
+ * A virtual folder representing a saved search.
+ *
+ * #CamelVeeFolder is a #CamelFolder subclass that implements virtual folders.
+ * A virtual folder is like a persistent search over one or more real folders:
+ * it automatically stays up to date as messages arrive or change, and
+ * otherwise behaves like a normal folder to client code.
+ *
+ * The set of source folders is managed with camel_vee_folder_add_folder_sync(),
+ * camel_vee_folder_remove_folder_sync(), and camel_vee_folder_set_folders_sync().
+ * The search expression (a #CamelFolderSearch s-expression) is set with
+ * camel_vee_folder_set_expression_sync().
+ *
+ * Virtual folder UIDs are composed of an 8-character hash of the physical
+ * folder plus the original UID, making them stable across renames and
+ * allowing efficient reverse-lookup via camel_vee_folder_get_location().
+ *
+ * Virtual folders are normally parented to a #CamelVeeStore. The special
+ * UNMATCHED folder represents all messages in the tracked folders that are
+ * not matched by any other virtual folder.
+ **/
 
 #include "evolution-data-server-config.h"
 

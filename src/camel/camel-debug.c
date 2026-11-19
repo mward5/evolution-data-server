@@ -1,19 +1,7 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -93,7 +81,7 @@ camel_debug (const gchar *mode)
 		return TRUE;
 
 	if (debug_table) {
-		gchar *colon;
+		const gchar *colon;
 		gchar *fallback;
 		gsize fallback_len;
 
@@ -103,17 +91,19 @@ camel_debug (const gchar *mode)
 		/* Check for fully qualified debug */
 		colon = strchr (mode, ':');
 		if (colon) {
+			gchar *tmp;
+
 			fallback_len = strlen (mode) + 1;
 			fallback = g_alloca (fallback_len);
 			g_strlcpy (fallback, mode, fallback_len);
-			colon = (colon - mode) + fallback;
+			tmp = (colon - mode) + fallback;
 			/* Now check 'module[:*]' */
-			*colon = 0;
+			*tmp = 0;
 			if (g_hash_table_lookup (debug_table, fallback))
 				return TRUE;
 			/* Now check ':subsystem' */
-			*colon = ':';
-			if (g_hash_table_lookup (debug_table, colon))
+			*tmp = ':';
+			if (g_hash_table_lookup (debug_table, tmp))
 				return TRUE;
 		}
 	}

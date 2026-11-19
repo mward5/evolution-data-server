@@ -1,18 +1,5 @@
 /*
- * camel-subscribable.c
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -407,9 +394,6 @@ subscribable_unsubscribe_folder_thread (GTask *task,
 		subscribable, folder_name, cancellable, &local_error);
 	CAMEL_CHECK_LOCAL_GERROR (
 		subscribable, unsubscribe_folder_sync, success, local_error);
-
-	if (success)
-		camel_store_delete_cached_folder (CAMEL_STORE (subscribable), folder_name);
 
 	camel_operation_pop_message (cancellable);
 

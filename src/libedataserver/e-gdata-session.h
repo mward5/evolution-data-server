@@ -1,6 +1,6 @@
 /*
  * SPDX-FileCopyrightText: (C) 2022 Red Hat (www.redhat.com)
- * SPDX-License-Identifier: LGPL-2.1-or-later
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #if !defined (__LIBEDATASERVER_H_INSIDE__) && !defined (LIBEDATASERVER_COMPILATION)
@@ -58,10 +58,6 @@ typedef gboolean (*EGDataObjectCallback) (EGDataSession *gdata,
 
 /**
  * EGDataSession:
- *
- * Contains only private data that should be read and manipulated using the
- * functions below.
- *
  * Since: 3.46
  **/
 struct _EGDataSession {

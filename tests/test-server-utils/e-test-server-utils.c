@@ -1,20 +1,7 @@
-/* e-test-server-utils.c - Test scaffolding to run tests with in-tree data server.
- *
- * Copyright (C) 2012 Intel Corporation
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Tristan Van Berkom <tristanvb@openismus.com>
+/*
+ * SPDX-FileCopyrightText: (C) 2012 Intel Corporation
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Tristan Van Berkom <tristanvb@openismus.com>
  */
 
 /**
@@ -731,6 +718,133 @@ e_test_server_utils_setup (ETestServerFixture *fixture,
 	g_signal_handlers_disconnect_by_func (fixture->registry, e_test_server_utils_source_added, &pair);
 }
 
+#define BACKEND_CLOSE_WAIT_SECONDS 7
+
+typedef struct {
+	GMainLoop *loop;
+	gchar *uid;
+	gboolean matched;
+	guint signal_subscription_id;
+	guint watcher_id;
+	guint timeout_id;
+} BackendCloseWait;
+
+static void
+backend_close_wait_mark_matched (BackendCloseWait *wait)
+{
+	wait->matched = TRUE;
+
+	if (wait->timeout_id) {
+		g_source_remove (wait->timeout_id);
+		wait->timeout_id = 0;
+	}
+
+	if (g_main_loop_is_running (wait->loop))
+		g_main_loop_quit (wait->loop);
+}
+
+static void
+backend_close_wait_signal_cb (GDBusConnection *connection,
+                              const gchar *sender_name,
+                              const gchar *object_path,
+                              const gchar *interface_name,
+                              const gchar *signal_name,
+                              GVariant *parameters,
+                              gpointer user_data)
+{
+	BackendCloseWait *wait = user_data;
+	const gchar *uid = NULL;
+
+	g_variant_get (parameters, "(&s&s)", &uid, NULL);
+
+	if (g_strcmp0 (uid, wait->uid) == 0)
+		backend_close_wait_mark_matched (wait);
+}
+
+static void
+backend_close_wait_vanished_cb (GDBusConnection *connection,
+                                const gchar *name,
+                                gpointer user_data)
+{
+	backend_close_wait_mark_matched (user_data);
+}
+
+static gboolean
+backend_close_wait_timeout_cb (gpointer user_data)
+{
+	BackendCloseWait *wait = user_data;
+
+	g_error ("Timed out waiting for the backend for '%s' to fully close", wait->uid);
+
+	return G_SOURCE_REMOVE;
+}
+
+static gboolean
+backend_close_wait_get_factory_info (ETestServiceType type,
+                                     const gchar **out_bus_name,
+                                     const gchar **out_object_path,
+                                     const gchar **out_interface_name)
+{
+	switch (type) {
+	case E_TEST_SERVER_ADDRESS_BOOK:
+		*out_bus_name = ADDRESS_BOOK_DBUS_SERVICE_NAME;
+		*out_object_path = "/org/gnome/evolution/dataserver/AddressBookFactory";
+		*out_interface_name = "org.gnome.evolution.dataserver.AddressBookFactory";
+		return TRUE;
+
+	case E_TEST_SERVER_CALENDAR:
+		*out_bus_name = CALENDAR_DBUS_SERVICE_NAME;
+		*out_object_path = "/org/gnome/evolution/dataserver/CalendarFactory";
+		*out_interface_name = "org.gnome.evolution.dataserver.CalendarFactory";
+		return TRUE;
+
+	default:
+		return FALSE;
+	}
+}
+
+static BackendCloseWait *
+backend_close_wait_start (GDBusConnection *connection,
+                          const gchar *bus_name,
+                          const gchar *object_path,
+                          const gchar *interface_name,
+                          const gchar *uid)
+{
+	BackendCloseWait *wait;
+
+	wait = g_slice_new0 (BackendCloseWait);
+	wait->loop = g_main_loop_new (NULL, FALSE);
+	wait->uid = g_strdup (uid);
+
+	wait->signal_subscription_id = g_dbus_connection_signal_subscribe (
+		connection, bus_name, interface_name, "BackendClosed", object_path,
+		NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+		backend_close_wait_signal_cb, wait, NULL);
+
+	wait->watcher_id = g_bus_watch_name_on_connection (
+		connection, bus_name, G_BUS_NAME_WATCHER_FLAGS_NONE,
+		NULL, backend_close_wait_vanished_cb, wait, NULL);
+
+	return wait;
+}
+
+static void
+backend_close_wait_finish (GDBusConnection *connection,
+                           BackendCloseWait *wait)
+{
+	if (!wait->matched) {
+		wait->timeout_id = g_timeout_add_seconds (BACKEND_CLOSE_WAIT_SECONDS, backend_close_wait_timeout_cb, wait);
+
+		g_main_loop_run (wait->loop);
+	}
+
+	g_dbus_connection_signal_unsubscribe (connection, wait->signal_subscription_id);
+	g_bus_unwatch_name (wait->watcher_id);
+	g_main_loop_unref (wait->loop);
+	g_free (wait->uid);
+	g_slice_free (BackendCloseWait, wait);
+}
+
 /**
  * e_test_server_utils_teardown:
  * @fixture: An #ETestServerFixture
@@ -744,6 +858,22 @@ e_test_server_utils_teardown (ETestServerFixture *fixture,
 {
 	ETestServerClosure *closure = (ETestServerClosure *) user_data;
 	GError             *error = NULL;
+	GDBusConnection *backend_close_connection = NULL;
+	BackendCloseWait *backend_close_wait = NULL;
+	const gchar *backend_close_bus_name = NULL;
+	const gchar *backend_close_object_path = NULL;
+	const gchar *backend_close_interface_name = NULL;
+
+	if (backend_close_wait_get_factory_info (closure->type, &backend_close_bus_name,
+						 &backend_close_object_path, &backend_close_interface_name)) {
+		backend_close_connection = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
+
+		if (backend_close_connection)
+			backend_close_wait = backend_close_wait_start (
+				backend_close_connection, backend_close_bus_name,
+				backend_close_object_path, backend_close_interface_name,
+				fixture->source_name);
+	}
 
 	/* Try to finalize the EClient */
 	switch (closure->type) {
@@ -781,6 +911,11 @@ e_test_server_utils_teardown (ETestServerFixture *fixture,
 	case E_TEST_SERVER_NONE:
 		break;
 	}
+
+	if (backend_close_wait)
+		backend_close_wait_finish (backend_close_connection, backend_close_wait);
+
+	g_clear_object (&backend_close_connection);
 
 	/* Assert that our EClient has finalized */
 	if (closure->type != E_TEST_SERVER_NONE)
@@ -881,6 +1016,38 @@ e_test_server_utils_finish_run (void)
 {
 #if GLOBAL_DBUS_DAEMON
 	if (!test_installed_services ()) {
+		GWeakRef weak;
+		GDBusConnection *connection;
+		gint ii;
+
+		/* Spin the main context briefly here, thus any pending sources
+		   catching on the connection have a change to finish before
+		   the test is finished. */
+		connection = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
+		if (connection != NULL) {
+			g_weak_ref_init (&weak, connection);
+			g_object_unref (connection);
+		} else {
+			g_weak_ref_init (&weak, NULL);
+		}
+
+		for (ii = 0; ii < 20; ii++) {
+			while (g_main_context_pending (NULL)) {
+				g_main_context_iteration (NULL, FALSE);
+			}
+
+			connection = g_weak_ref_get (&weak);
+			if (connection != NULL) {
+				g_object_unref (connection);
+			} else {
+				break;
+			}
+
+			g_usleep (G_USEC_PER_SEC / 20);
+		}
+
+		g_weak_ref_clear (&weak);
+
 		/* Teardown the D-Bus Daemon */
 		g_test_dbus_down (global_test_dbus);
 		g_object_unref (global_test_dbus);

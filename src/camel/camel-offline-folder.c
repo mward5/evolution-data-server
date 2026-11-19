@@ -1,20 +1,27 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Jeffrey Stedfast <fejj@novell.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@novell.com>
  */
+
+/**
+ * CamelOfflineFolder:
+ *
+ * A folder that supports offline message caching.
+ *
+ * #CamelOfflineFolder is a #CamelFolder subclass that should be used by any
+ * folder in an offline-capable (#CamelOfflineStore) backend.
+ *
+ * It adds two capabilities:
+ *
+ * - A `sync-offline` persistent property that, when %TRUE, causes the backend
+ *   to automatically keep the folder's messages synchronised for offline
+ *   access.
+ *
+ * - camel_offline_folder_downsync() — a method that synchronises messages
+ *   matching a given search expression to local storage so they are available
+ *   when the network is not.
+ **/
 
 #include "evolution-data-server-config.h"
 

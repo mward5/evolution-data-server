@@ -1,18 +1,5 @@
 /*
- * camel-nntp-settings.h
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #ifndef CAMEL_NNTP_SETTINGS_H
@@ -59,6 +46,11 @@ struct _CamelNNTPSettingsClass {
 
 GType		camel_nntp_settings_get_type
 					(void) G_GNUC_CONST;
+guint		camel_nntp_settings_get_disconnect_after_idle
+					(CamelNNTPSettings *settings);
+void		camel_nntp_settings_set_disconnect_after_idle
+					(CamelNNTPSettings *settings,
+					 guint disconnect_after_idle);
 gboolean	camel_nntp_settings_get_filter_all
 					(CamelNNTPSettings *settings);
 void		camel_nntp_settings_set_filter_all

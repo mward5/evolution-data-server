@@ -1,21 +1,34 @@
-/* camel-folder.c: Abstract class for an email folder
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Bertrand Guiheneuf <bertrand@helixcode.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
  */
+
+/**
+ * CamelFolder:
+ *
+ * Abstract interface for a mail message store.
+ *
+ * #CamelFolder is the object used to abstract a mail folder that stores
+ * messages. Folders are obtained from #CamelStore instances and provide
+ * the primary interface for working with mail:
+ *
+ * - Retrieving information about messages in the folder (via
+ *   #CamelFolderSummary and #CamelMessageInfo).
+ * - Searching for messages with camel_folder_search_sync().
+ * - Retrieving message content with camel_folder_get_message().
+ * - Copying, moving, and appending messages.
+ * - Modifying message flags and user-defined tags.
+ * - Expunging deleted messages.
+ *
+ * The abstraction maps closely to IMAP folders, Berkeley mbox, and Maildir:
+ * messages are ordered by arrival time, identified by a persistent UID
+ * string, and deleted by first flagging them then expunging the folder.
+ *
+ * #CamelFolder itself handles the client-facing interface. Implementations
+ * use #CamelFolderSummary to manage the message list and cached metadata,
+ * and may use #CamelFolderSearch to drive the search interface.
+ **/
 
 #include "evolution-data-server-config.h"
 
@@ -135,6 +148,7 @@ enum {
 	PROP_PARENT_STORE,
 	PROP_MARK_SEEN,
 	PROP_MARK_SEEN_TIMEOUT,
+	PROP_FLAGS,
 	N_PROPS
 };
 
@@ -781,6 +795,12 @@ folder_set_property (GObject *object,
 				CAMEL_FOLDER (object),
 				g_value_get_int (value));
 			return;
+
+		case PROP_FLAGS:
+			camel_folder_set_flags (
+				CAMEL_FOLDER (object),
+				g_value_get_uint (value));
+			return;
 	}
 
 	G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -826,6 +846,12 @@ folder_get_property (GObject *object,
 		case PROP_MARK_SEEN_TIMEOUT:
 			g_value_set_int (
 				value, camel_folder_get_mark_seen_timeout (
+				CAMEL_FOLDER (object)));
+			return;
+
+		case PROP_FLAGS:
+			g_value_set_uint (
+				value, camel_folder_get_flags (
 				CAMEL_FOLDER (object)));
 			return;
 	}
@@ -1070,7 +1096,7 @@ static void
 folder_rename (CamelFolder *folder,
                const gchar *new)
 {
-	gchar *tmp;
+	const gchar *tmp;
 
 	d (printf ("CamelFolder:rename ('%s')\n", new));
 
@@ -1459,6 +1485,90 @@ folder_search_body_sync (CamelFolder *folder,
 			 GCancellable *cancellable,
 			 GError **error)
 {
+	CamelFolderSummary *summary;
+	CamelIndex *body_index = NULL;
+	CamelIndexCursor *idc;
+	GHashTable *result_set = NULL;
+	guint ii;
+
+	if (!words || words->len == 0)
+		goto not_supported;
+
+	summary = camel_folder_get_folder_summary (folder);
+	if (summary)
+		body_index = camel_folder_summary_get_index (summary);
+
+	if (!body_index)
+		goto not_supported;
+
+	idc = camel_index_words (body_index);
+	if (!idc)
+		goto not_supported;
+
+	if (!camel_index_cursor_next (idc)) {
+		g_clear_object (&idc);
+		goto not_supported;
+	}
+	g_clear_object (&idc);
+
+	for (ii = 0; ii < words->len; ii++) {
+		const gchar *word = g_ptr_array_index (words, ii);
+		GHashTable *word_set;
+		const gchar *name;
+
+		if (g_cancellable_set_error_if_cancelled (cancellable, error)) {
+			g_clear_pointer (&result_set, g_hash_table_unref);
+			return FALSE;
+		}
+
+		idc = camel_index_find (body_index, word);
+		if (!idc) {
+			g_clear_pointer (&result_set, g_hash_table_unref);
+			goto not_supported;
+		}
+
+		word_set = g_hash_table_new_full (g_str_hash, g_str_equal, (GDestroyNotify) camel_pstring_free, NULL);
+		while ((name = camel_index_cursor_next (idc)) != NULL) {
+			g_hash_table_add (word_set, (gpointer) camel_pstring_strdup (name));
+		}
+		g_clear_object (&idc);
+
+		if (result_set == NULL) {
+			result_set = word_set;
+		} else {
+			GHashTableIter iter;
+			gpointer key;
+
+			g_hash_table_iter_init (&iter, result_set);
+			while (g_hash_table_iter_next (&iter, &key, NULL)) {
+				if (!g_hash_table_contains (word_set, key)) {
+					g_hash_table_iter_remove (&iter);
+				}
+			}
+			g_hash_table_unref (word_set);
+		}
+
+		if (g_hash_table_size (result_set) == 0) {
+			g_hash_table_unref (result_set);
+			*out_uids = g_ptr_array_new ();
+			return TRUE;
+		}
+	}
+
+	if (result_set) {
+		GHashTableIter iter;
+		gpointer key;
+
+		*out_uids = g_ptr_array_new_with_free_func ((GDestroyNotify) camel_pstring_free);
+		g_hash_table_iter_init (&iter, result_set);
+		while (g_hash_table_iter_next (&iter, &key, NULL)) {
+			g_ptr_array_add (*out_uids, (gpointer) camel_pstring_strdup ((const gchar *) key));
+		}
+		g_hash_table_unref (result_set);
+		return TRUE;
+	}
+
+ not_supported:
 	g_set_error_literal (
 		error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
 		_("Cannot search message bodies remotely, not supported"));
@@ -1731,6 +1841,22 @@ camel_folder_class_init (CamelFolderClass *class)
 			G_PARAM_EXPLICIT_NOTIFY |
 			G_PARAM_STATIC_STRINGS |
 			CAMEL_FOLDER_PARAM_PERSISTENT);
+
+	/**
+	 * CamelFolder:flags:
+	 *
+	 * Folder flags (bit-or of #CamelFolderFlags).
+	 *
+	 * Since: 3.62
+	 **/
+	properties[PROP_FLAGS] =
+		g_param_spec_uint (
+			"flags", NULL, NULL,
+			0, G_MAXUINT32,
+			0,
+			G_PARAM_READWRITE |
+			G_PARAM_EXPLICIT_NOTIFY |
+			G_PARAM_STATIC_STRINGS);
 
 	g_object_class_install_properties (object_class, N_PROPS, properties);
 
@@ -2221,7 +2347,12 @@ camel_folder_set_flags (CamelFolder *folder,
 {
 	g_return_if_fail (CAMEL_IS_FOLDER (folder));
 
+	if (folder->priv->folder_flags == folder_flags)
+		return;
+
 	folder->priv->folder_flags = folder_flags;
+
+	g_object_notify_by_pspec (G_OBJECT (folder), properties[PROP_FLAGS]);
 }
 
 /**

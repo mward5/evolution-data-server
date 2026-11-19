@@ -1,20 +1,7 @@
-/* camel-imap-folder.h : Class for a IMAP folder
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #ifndef CAMEL_IMAPX_FOLDER_H
@@ -92,6 +79,19 @@ void		camel_imapx_folder_add_move_to_real_trash
 void		camel_imapx_folder_add_move_to_not_junk
 						(CamelIMAPXFolder *folder,
 						 const gchar *message_uid);
+void		camel_imapx_folder_remove_move_uid
+						(CamelIMAPXFolder *folder,
+						 const gchar *message_uid);
+guint		camel_imapx_folder_get_test_move_to_trash_delay_ms
+						(CamelIMAPXFolder *folder);
+void		camel_imapx_folder_set_test_move_to_trash_delay_ms
+						(CamelIMAPXFolder *folder,
+						 guint delay_ms);
+guint		camel_imapx_folder_get_test_expunge_decision_delay_ms
+						(CamelIMAPXFolder *folder);
+void		camel_imapx_folder_set_test_expunge_decision_delay_ms
+						(CamelIMAPXFolder *folder,
+						 guint delay_ms);
 void		camel_imapx_folder_invalidate_local_cache
 						(CamelIMAPXFolder *folder,
 						 guint64 new_uidvalidity);

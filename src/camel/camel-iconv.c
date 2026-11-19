@@ -1,21 +1,8 @@
-/* camel-iconv.c
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
- *          Jeffery Stedfast <fejj@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileContributor: Jeffery Stedfast <fejj@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -109,6 +96,9 @@ struct {
 	{ "gb2312.1980-0",  "gb18030"    },
 	{ "gb-2312",        "gb18030"    },
 	{ "gb2312",         "gb18030"    },
+	/* "gb2313" is a known mislabeling of "gb2312" (codepage 936)
+	 * produced by some Chinese Windows/Outlook installations */
+	{ "gb2313",         "gb18030"    },
 	{ "gb18030-0",      "gb18030"    },
 	{ "gbk-0",          "GBK"        },
 
@@ -151,7 +141,8 @@ e_strup (gchar *str)
 static void
 locale_parse_lang (const gchar *locale)
 {
-	gchar *codeset, *lang;
+	const gchar *codeset;
+	gchar *lang;
 
 	if ((codeset = strchr (locale, '.')))
 		lang = g_strndup (locale, codeset - locale);

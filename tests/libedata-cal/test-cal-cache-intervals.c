@@ -1,16 +1,5 @@
 /*
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include <stdlib.h>
@@ -199,7 +188,6 @@ test_intervals (TCUFixture *fixture,
 	ETimezoneCache *zone_cache;
 	GSList *l1, *intervals = NULL;
 	GHashTable *from_intervals;
-	gint num_deleted = 0;
 	gint ii, start, end;
 	gboolean success;
 	GError *error = NULL;
@@ -307,8 +295,6 @@ test_intervals (TCUFixture *fixture,
 
 			interval_data_free (interval);
 			intervals = g_slist_delete_link (intervals, l1);
-
-			num_deleted++;
 		}
 
 		l1 = next;
@@ -340,9 +326,6 @@ gint
 main (gint argc,
       gchar **argv)
 {
-#if !GLIB_CHECK_VERSION (2, 35, 1)
-	g_type_init ();
-#endif
 	g_test_init (&argc, &argv, NULL);
 	g_test_bug_base ("https://gitlab.gnome.org/GNOME/evolution-data-server/");
 

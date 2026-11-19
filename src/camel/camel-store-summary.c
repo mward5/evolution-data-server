@@ -1,20 +1,28 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
+
+/**
+ * CamelStoreSummary:
+ *
+ * Cached folder listing for a mail store.
+ *
+ * #CamelStoreSummary is a helper class used by #CamelStore implementations
+ * to cache the list of known folders and their metadata (name, flags, unread
+ * count, etc.). Like #CamelFolderSummary for messages, it avoids the need to
+ * query the remote server for the folder list on every session start.
+ *
+ * The summary is stored on disk in a versioned binary format that supports
+ * subclassing, so backend-specific implementations can add their own
+ * per-folder fields.
+ *
+ * Backends subclass #CamelStoreSummary to store additional information
+ * relevant to their storage format, and typically call
+ * camel_store_summary_load() at startup and camel_store_summary_save()
+ * when the folder list changes.
+ **/
 
 #include "evolution-data-server-config.h"
 
@@ -1005,7 +1013,6 @@ camel_store_summary_disconnect_folder_summary (CamelStoreSummary *summary,
 
 	if (!g_hash_table_lookup (summary->priv->folder_summaries, folder_summary)) {
 		g_rec_mutex_unlock (&summary->priv->summary_lock);
-		g_warning ("%s: Store summary %p is not connected to folder summary %p", G_STRFUNC, summary, folder_summary);
 		return FALSE;
 	}
 

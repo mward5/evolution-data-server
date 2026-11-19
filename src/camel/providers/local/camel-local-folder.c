@@ -1,19 +1,7 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -505,12 +493,6 @@ camel_local_folder_construct (CamelLocalFolder *lf,
 	camel_local_folder_lock_changes (lf);
 
 	lf->changes = camel_folder_change_info_new ();
-
-	/* TODO: Remove the following line, it is a temporary workaround to remove
-	 * the old-format 'ibex' files that might be lying around */
-	g_unlink (lf->index_path);
-
-	/* FIXME: Need to run indexing off of the setv method */
 
 	/* if we have no/invalid index file, force it */
 	forceindex = camel_text_index_check (lf->index_path) == -1;

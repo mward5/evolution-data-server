@@ -1,21 +1,7 @@
-/* camel-nntp-provider.c: nntp provider registration code
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors :
- *   Chris Toshok <toshok@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Chris Toshok <toshok@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -29,20 +15,20 @@
 static CamelProviderConfEntry nntp_conf_entries[] = {
 	{ CAMEL_PROVIDER_CONF_SECTION_START, "general", NULL, N_("Options") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "filter-all", NULL,
-	  N_("Apply _filters to new messages in all folders"), "0" },
+	  N_("Apply _filters to new messages in all folders") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "filter-junk", NULL,
-	  N_("Check new messages for _Junk contents"), "0" },
+	  N_("Check new messages for _Junk contents") },
 	{ CAMEL_PROVIDER_CONF_SECTION_END },
 	{ CAMEL_PROVIDER_CONF_SECTION_START, "folders", NULL,
 	  N_("Folders") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "short-folder-names", NULL,
 	  N_("_Show folders in short notation (e.g. c.o.linux rather "
-	  "than comp.os.linux)"), "1" },
+	  "than comp.os.linux)") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "folder-hierarchy-relative", NULL,
-	  N_("In the subscription _dialog, show relative folder names"), "1" },
+	  N_("In the subscription _dialog, show relative folder names") },
 	{ CAMEL_PROVIDER_CONF_CHECKSPIN, "limit-latest", NULL,
 	  /* Translators: The '%s' is replaced with a spin button with the actual value to use */
-	  N_("Download only up to %s latest messages"), "y:100:1000:99999999" },
+	  N_("Download only up to %s latest messages") },
 	{ CAMEL_PROVIDER_CONF_SECTION_END },
 	{ CAMEL_PROVIDER_CONF_END }
 };

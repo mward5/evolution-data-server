@@ -1,20 +1,38 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
+
+/**
+ * CamelMimeFilter:
+ *
+ * Stream-processing filter modules for MIME data.
+ *
+ * #CamelMimeFilter is an abstract base class for stream-processing modules
+ * that transform blocks of data. Filters can be used in three ways:
+ *
+ * - **Individually** — call camel_mime_filter_filter() and
+ *   camel_mime_filter_complete() directly to process data buffers.
+ *
+ * - **Attached to a stream** — add to a #CamelStreamFilter so that data
+ *   read from or written to the stream is automatically transformed.
+ *
+ * - **Attached to a parser** — register with #CamelMimeParser for pipelined
+ *   decoding while a message is being parsed.
+ *
+ * Each concrete filter subclass implements three virtual methods:
+ * filter(), complete(), and reset(). The base class handles all memory
+ * management for the pre-space / look-back buffer mechanism, which allows
+ * efficient multi-stage pipelined processing.
+ *
+ * Available filter implementations include character-set conversion
+ * (#CamelMimeFilterCharset), base64 and quoted-printable encoding
+ * (#CamelMimeFilterBasic), line-ending canonicalisation
+ * (#CamelMimeFilterCRLF), gzip compression (#CamelMimeFilterGZip), HTML
+ * conversion (#CamelMimeFilterToHtml), From-line escaping
+ * (#CamelMimeFilterFrom), and many others.
+ **/
 
 #include <string.h>
 

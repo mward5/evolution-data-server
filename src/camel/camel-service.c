@@ -1,21 +1,36 @@
-/* camel-service.c : Abstract class for an email service
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Bertrand Guiheneuf <bertrand@helixcode.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
  */
+
+/**
+ * CamelService:
+ *
+ * Base class for mail access and sending services.
+ *
+ * #CamelService is an abstract base class that is the common parent of
+ * #CamelStore (mail storage and retrieval) and #CamelTransport (mail
+ * sending). It defines the common operations associated with a configured
+ * mail service.
+ *
+ * Service instances are always created and managed by #CamelSession via
+ * camel_session_get_service(). The session uses the GType stored in the
+ * #CamelProvider descriptor to instantiate the correct subclass.
+ *
+ * #CamelService manages the connection lifecycle:
+ * - camel_service_connect() establishes a connection to the remote resource.
+ * - camel_service_disconnect() tears it down.
+ * - Connection and authentication settings are conveyed via a #CamelURL
+ *   (the URI passed when the service was first requested).
+ *
+ * Authentication is handled asynchronously through the session's
+ * camel_session_authenticate() mechanism, which can prompt the user for
+ * credentials as needed.
+ *
+ * The connection state is exposed as a #CamelServiceConnectionStatus and
+ * signals are emitted when it changes.
+ **/
 
 #include "evolution-data-server-config.h"
 

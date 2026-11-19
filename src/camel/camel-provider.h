@@ -1,21 +1,8 @@
-/* camel-provider.h :  provider definition
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Bertrand Guiheneuf <bertrand@helixcode.com>
- *          Jeffrey Stedfast <fejj@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
 
 #if !defined (__CAMEL_H_INSIDE__) && !defined (CAMEL_COMPILATION)
@@ -105,6 +92,25 @@ typedef enum {
 
 /* Generic extra config stuff */
 
+/**
+ * CamelProviderConfEntry:
+ * @type: a configuration entry type, one of #CamelProviderConfType
+ * @name: name of the entry, corresponding to a CamelSettings descendant property name
+ * @depname: (nullable): name of a dependency property, having this entry sensitive
+ *    only if the @depname is set; it can start with an exclamation mark (`!`), to negate
+ *    the condition, aka to have this entry sensitive only if the @depname is not set
+ * @text: user-visible text describing the configuration entry; it should be localized
+ * @value: (nullable): it's ignored for all but the %CAMEL_PROVIDER_CONF_OPTIONS @type,
+ *    where it contains colon (`:`) separated pairs of key:value items for a combo box
+ *    items; the value is localized with dgettext() using the translation domain of
+ *    the provider
+ *
+ * Described a configuration entry shown to the user in an application.
+ * Some types do not use all the members.
+ *
+ * The default values are taken from corresponding GObject properties
+ * of the provider's #CamelSettings descendant.
+ **/
 typedef struct {
 	CamelProviderConfType type;
 	const gchar *name, *depname;

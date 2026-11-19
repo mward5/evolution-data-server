@@ -1,6 +1,8 @@
 set(SOURCES
 	camel-test.c
 	camel-test.h
+	dovecot-helper.c
+	dovecot-helper.h
 	messages.c
 	messages.h
 	addresses.c
@@ -21,6 +23,7 @@ add_dependencies(cameltest camel)
 target_compile_definitions(cameltest PRIVATE
 	-DG_LOG_DOMAIN=\"camel-test\"
 	-DCAMEL_BUILD_DIR=\"${CMAKE_BINARY_DIR}/src/camel\"
+	-DINSTALLED_TEST_DIR=\"${INSTALLED_TESTS_EXEC_DIR}\"
 )
 
 target_compile_options(cameltest PUBLIC

@@ -1,20 +1,33 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Jeffrey Stedfast <fejj@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
+
+/**
+ * CamelSasl:
+ *
+ * SASL (Secure Authentication and Security Layer) support.
+ *
+ * #CamelSasl is an abstract base class for pluggable authentication
+ * mechanisms used by connection-based mail services. It implements the
+ * Secure Authentication part of SASL, providing a challenge-response
+ * interface that can be invoked multiple times until authentication
+ * completes.
+ *
+ * Non-SASL authentication mechanisms that fit the same challenge-response
+ * design (such as LOGIN and NTLM) are also wrapped in #CamelSasl subclasses
+ * to simplify their use.
+ *
+ * Instances are created via the camel_sasl_new() factory function, which
+ * looks up the named mechanism. The main API is camel_sasl_challenge(), which
+ * takes a server challenge token and returns the client's response token.
+ * A base64 convenience wrapper, camel_sasl_challenge_base64(), is provided
+ * for protocols that exchange base64-encoded tokens.
+ *
+ * Available built-in mechanisms include: ANONYMOUS, CRAM-MD5, DIGEST-MD5,
+ * GSSAPI (Kerberos), LOGIN, NTLM, PLAIN, POPB4SMTP, and XOAUTH2 variants.
+ **/
 
 #include "evolution-data-server-config.h"
 

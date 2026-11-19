@@ -1,17 +1,6 @@
 /*
- * Copyright (C) 2018 Red Hat, Inc. (www.redhat.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: (C) 2018 Red Hat, Inc. (www.redhat.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #if !defined (__LIBEDATASERVER_H_INSIDE__) && !defined (LIBEDATASERVER_COMPILATION)
@@ -49,7 +38,7 @@ G_BEGIN_DECLS
 /**
  * E_OAUTH2_SERVICE_ERROR:
  *
- * Since: 3.60.2
+ * Since: 3.62
  **/
 #define E_OAUTH2_SERVICE_ERROR (e_oauth2_service_error_quark ())
 
@@ -66,7 +55,7 @@ GQuark		e_oauth2_service_error_quark	(void) G_GNUC_CONST;
  *
  * Error codes for #EOAuth2Service operations.
  *
- * Since: 3.60.2
+ * Since: 3.62
  **/
 typedef enum {
 	E_OAUTH2_SERVICE_ERROR_FAILED,
@@ -130,10 +119,6 @@ typedef struct _EOAuth2ServiceInterface EOAuth2ServiceInterface;
 
 /**
  * EOAuth2Service:
- *
- * Contains only private data that should be read and manipulated using the
- * functions below.
- *
  * Since: 3.28
  **/
 struct _EOAuth2ServiceInterface {

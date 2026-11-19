@@ -1,23 +1,10 @@
-/* Evolution calendar factory
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- * Copyright (C) 2009 Intel Corporation
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Federico Mena-Quintero <federico@ximian.com>
- *          JP Rosevear <jpr@ximian.com>
- *          Ross Burton <ross@linux.intel.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-FileCopyrightText: (C) 2009 Intel Corporation
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Federico Mena-Quintero <federico@ximian.com>
+ * SPDX-FileContributor: JP Rosevear <jpr@ximian.com>
+ * SPDX-FileContributor: Ross Burton <ross@linux.intel.com>
  */
 
 /**
@@ -138,6 +125,16 @@ data_cal_complete_open (EDataFactory *data_factory,
 		data_cal_complete_task_list_open (data_factory, invocation, object_path, bus_name);
 	else if (g_strcmp0 (extension_name, E_SOURCE_EXTENSION_MEMO_LIST) == 0)
 		data_cal_complete_memo_list_open (data_factory, invocation, object_path, bus_name);
+}
+
+static void
+data_cal_factory_emit_backend_closed (EDataFactory *data_factory,
+				      const gchar *uid,
+				      const gchar *extension_name)
+{
+	EDataCalFactory *data_cal_factory = E_DATA_CAL_FACTORY (data_factory);
+
+	e_dbus_calendar_factory_emit_backend_closed (data_cal_factory->priv->dbus_factory, uid, extension_name);
 }
 
 static void
@@ -282,6 +279,7 @@ e_data_cal_factory_class_init (EDataCalFactoryClass *class)
 	data_factory_class->complete_open = data_cal_complete_open;
 	data_factory_class->create_backend = data_cal_factory_create_backend;
 	data_factory_class->open_backend = data_cal_factory_open_backend;
+	data_factory_class->emit_backend_closed = data_cal_factory_emit_backend_closed;
 }
 
 static gboolean

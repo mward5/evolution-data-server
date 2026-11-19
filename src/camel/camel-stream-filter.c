@@ -1,20 +1,24 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
+
+/**
+ * CamelStreamFilter:
+ *
+ * A stream that pipelines data through MIME filters.
+ *
+ * #CamelStreamFilter wraps another #CamelStream and passes all data read
+ * from or written to it through an ordered chain of #CamelMimeFilter
+ * instances. This enables efficient, multi-stage, pipelined processing of
+ * stream data in a single pass.
+ *
+ * Filters are added with camel_stream_filter_add() and removed with
+ * camel_stream_filter_remove(). Each filter is applied in the order it was
+ * added. Data flows through all filters before being returned to the caller
+ * (for read) or written to the underlying stream (for write).
+ **/
 
 #include "evolution-data-server-config.h"
 

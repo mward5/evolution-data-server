@@ -1,18 +1,6 @@
 /*
- * Copyright (C) 2011 Red Hat, Inc. (www.redhat.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: (C) 2011 Red Hat, Inc. (www.redhat.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #if !defined (__LIBEBOOK_H_INSIDE__) && !defined (LIBEBOOK_COMPILATION)
@@ -55,8 +43,6 @@ struct _EBookClient;
 /**
  * EBookClientView:
  *
- * Contains only private data the should be read and manipulated using the
- * functions below.
  *
  * Since: 3.2
  **/
@@ -105,7 +91,6 @@ GDBusConnection *
 						(EBookClientView *client_view);
 const gchar *	e_book_client_view_get_object_path
 						(EBookClientView *client_view);
-gboolean	e_book_client_view_is_running	(EBookClientView *client_view);
 void		e_book_client_view_set_fields_of_interest
 						(EBookClientView *client_view,
 						 const GSList *fields_of_interest,

@@ -1,17 +1,6 @@
 /*
- * Copyright (C) 2018 Red Hat, Inc. (www.redhat.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: (C) 2018 Red Hat, Inc. (www.redhat.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -19,6 +8,10 @@
 #include <locale.h>
 #include <libintl.h>
 #include <glib/gi18n.h>
+
+#ifndef G_OS_WIN32
+#include <gio/gdesktopappinfo.h>
+#endif
 
 #include <libedataserver/libedataserver.h>
 #include <libedataserverui/libedataserverui.h>
@@ -37,6 +30,69 @@ handle_term_signal (gpointer data)
 	return FALSE;
 }
 #endif
+
+/* Copy of e_util_is_running_gnome() from Evolution */
+static gboolean
+e_alarm_notify_is_running_gnome (void)
+{
+#ifdef G_OS_WIN32
+	return FALSE;
+#else
+	static gint runs_gnome = -1;
+
+	if (runs_gnome == -1) {
+		const gchar *desktop;
+		desktop = g_getenv ("XDG_CURRENT_DESKTOP");
+		runs_gnome = 0;
+		if (desktop != NULL) {
+			gint ii;
+			gchar **desktops = g_strsplit (desktop, ":", -1);
+			for (ii = 0; desktops[ii]; ii++) {
+				if (!g_ascii_strcasecmp (desktops[ii], "gnome")) {
+					runs_gnome = 1;
+					break;
+				}
+			}
+			g_strfreev (desktops);
+		}
+
+		if (runs_gnome) {
+			GDesktopAppInfo *app_info;
+
+			app_info = g_desktop_app_info_new ("gnome-notifications-panel.desktop");
+			if (!app_info) {
+				runs_gnome = 0;
+			}
+
+			g_clear_object (&app_info);
+		}
+	}
+
+	return runs_gnome != 0;
+#endif
+}
+
+/* Copy of e_util_is_running_flatpak() from Evolution */
+static gboolean
+e_alarm_notify_is_running_flatpak (void)
+{
+#ifdef G_OS_UNIX
+	static gint is_flatpak = -1;
+
+	if (is_flatpak == -1) {
+		if (g_file_test ("/.flatpak-info", G_FILE_TEST_EXISTS) ||
+		    g_getenv ("EVOLUTION_FLATPAK") != NULL) /* Only for debugging purposes */
+			is_flatpak = 1;
+		else
+			is_flatpak = 0;
+	}
+
+	return is_flatpak == 1;
+#else
+	return FALSE;
+#endif
+}
+
 
 gint
 main (gint argc,
@@ -59,6 +115,17 @@ main (gint argc,
 	g_type_ensure (G_TYPE_DBUS_CONNECTION);
 	g_type_ensure (G_TYPE_DBUS_PROXY);
 	g_type_ensure (G_BUS_TYPE_SESSION);
+
+	if (argc > 1 && e_alarm_notify_is_running_gnome () && !e_alarm_notify_is_running_flatpak ()) {
+		gint ii;
+
+		for (ii = 1; ii < argc; ii++) {
+			if (g_strcmp0 (argv[ii], "--autostart") == 0) {
+				/* running under GNOME, which handles notifications on its own since 51.beta */
+				return 0;
+			}
+		}
+	}
 
 	gtk_init (&argc, &argv);
 

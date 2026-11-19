@@ -1,18 +1,6 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -428,6 +416,8 @@ imapx_update_store_summary (CamelFolder *folder)
 		camel_store_summary_touch (imapx_store->summary);
 		camel_store_summary_save (imapx_store->summary);
 	}
+
+	camel_store_info_unref (si);
 }
 
 gchar *
@@ -489,7 +479,8 @@ struct {
 	{ "UTF8=ACCEPT", IMAPX_CAPABILITY_UTF8_ACCEPT },
 	{ "UTF8=ONLY", IMAPX_CAPABILITY_UTF8_ONLY },
 	{ "LOGINDISABLED", IMAPX_CAPABILITY_LOGINDISABLED },
-	{ "PREVIEW", IMAPX_CAPABILITY_PREVIEW }
+	{ "PREVIEW", IMAPX_CAPABILITY_PREVIEW },
+	{ "MULTISEARCH", IMAPX_CAPABILITY_MULTISEARCH }
 };
 
 static GMutex capa_htable_lock;         /* capabilities lookup table lock */

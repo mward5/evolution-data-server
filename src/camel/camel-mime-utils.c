@@ -1,20 +1,8 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
- *          Jeffrey Stedfast <fejj@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -771,7 +759,7 @@ quoted_decode (const guchar *in,
 		c = *inptr++;
 		if (c == '=') {
 			/* silently ignore truncated data? */
-			if (inend - in >= 2) {
+			if (inend - inptr >= 2) {
 				c = toupper (*inptr++);
 				c1 = toupper (*inptr++);
 				*outptr++ = (((c>='A'?c-'A'+10:c-'0')&0x0f) << 4)
@@ -1224,7 +1212,7 @@ rfc2047_decode_word (const gchar *in,
 	 */
 
 	/* trim off the 'language' part if it's there... */
-	if ((p = strchr (charset, '*')))
+	if ((p = strchr (charenc, '*')))
 		*p = '\0';
 
 	/* slight optimization? */
@@ -3901,6 +3889,14 @@ camel_content_type_simple (CamelContentType *ct)
 		return g_strdup_printf ("%s/%s", ct->type, ct->subtype);
 }
 
+/**
+ * camel_content_transfer_encoding_decode:
+ * @in: input string
+ *
+ * Decode the contents of a content-encoding header
+ *
+ * Returns: The decoded header
+ **/
 gchar *
 camel_content_transfer_encoding_decode (const gchar *in)
 {

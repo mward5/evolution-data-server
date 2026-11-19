@@ -1,16 +1,5 @@
 /*
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include <stdlib.h>
@@ -35,6 +24,7 @@ test_add_contact_sync (ETestServerFixture *fixture,
 
 	test_print ("successfully added and retrieved contact '%s'\n", uid);
 	g_object_unref (contact);
+	g_free (uid);
 }
 
 static void
@@ -55,6 +45,7 @@ test_add_contact_async (ETestServerFixture *fixture,
 		book, contact, ebook_test_utils_callback_quit, fixture->loop);
 
 	g_main_loop_run (fixture->loop);
+	g_clear_object (&contact);
 }
 
 gint

@@ -1,24 +1,11 @@
 /*
- * camel-async-closure.c
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 /**
- * SECTION: camel-async-closure
- * @short_description: Run asynchronous functions synchronously
- * @include: camel/camel.h
+ * CamelAsyncClosure:
+ *
+ * Run asynchronous functions synchronously.
  *
  * #CamelAsyncClosure provides a simple way to run an asynchronous function
  * synchronously without blocking the current thread.
@@ -38,18 +25,12 @@
  *    using the same #CamelAsyncClosure.
  *
  * 6) Finally, free the #CamelAsyncClosure with camel_async_closure_free().
+ *
+ * Since: 3.12
  **/
 
 #include "camel-async-closure.h"
 
-/**
- * CamelAsyncClosure:
- *
- * Contains only private data that should be read and manipulated using the
- * functions below.
- *
- * Since: 3.12
- **/
 struct _CamelAsyncClosure {
 	GMainLoop *loop;
 	GMainContext *context;

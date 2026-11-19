@@ -1,20 +1,7 @@
-/* camel-imap-store.c : class for a imap store
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -2033,77 +2020,12 @@ imapx_store_get_folder_sync (CamelStore *store,
                              GError **error)
 {
 	CamelFolder *folder;
-	CamelSettings *settings;
-	gboolean use_real_junk_path = FALSE;
-	gboolean use_real_trash_path = FALSE;
 
 	/* XXX This should be taken care of before we get this far. */
 	if (*folder_name == '/')
 		folder_name++;
 
 	folder = get_folder_offline (store, folder_name, flags, error);
-
-	/* Configure the folder flags according to IMAPX settings.
-	 *
-	 * XXX Since this is only done when the folder is first created,
-	 *     a restart is required to pick up changes to real Junk/Trash
-	 *     folder settings.  Need to think of a better way.
-	 *
-	 *     Perhaps have CamelStoreSettings grow junk and trash path
-	 *     string properties, and eliminate the CAMEL_FOLDER_IS_JUNK
-	 *     and CAMEL_FOLDER_IS_TRASH flags.  Then add functions like
-	 *     camel_folder_is_junk() and camel_folder_is_trash(), which
-	 *     compare their own full name against CamelStoreSettings.
-	 *
-	 *     Something to think about...
-	 */
-
-	settings = camel_service_ref_settings (CAMEL_SERVICE (store));
-
-	if (folder != NULL) {
-		use_real_junk_path =
-			camel_imapx_settings_get_use_real_junk_path (
-			CAMEL_IMAPX_SETTINGS (settings));
-		use_real_trash_path =
-			camel_imapx_settings_get_use_real_trash_path (
-			CAMEL_IMAPX_SETTINGS (settings));
-	}
-
-	if (use_real_junk_path) {
-		gchar *real_junk_path;
-
-		real_junk_path =
-			camel_imapx_settings_dup_real_junk_path (
-			CAMEL_IMAPX_SETTINGS (settings));
-
-		/* So we can safely compare strings. */
-		if (real_junk_path == NULL)
-			real_junk_path = g_strdup ("");
-
-		if (g_ascii_strcasecmp (real_junk_path, folder_name) == 0)
-			camel_folder_set_flags (folder, camel_folder_get_flags (folder) | CAMEL_FOLDER_IS_JUNK);
-
-		g_free (real_junk_path);
-	}
-
-	if (use_real_trash_path) {
-		gchar *real_trash_path;
-
-		real_trash_path =
-			camel_imapx_settings_dup_real_trash_path (
-			CAMEL_IMAPX_SETTINGS (settings));
-
-		/* So we can safely compare strings. */
-		if (real_trash_path == NULL)
-			real_trash_path = g_strdup ("");
-
-		if (g_ascii_strcasecmp (real_trash_path, folder_name) == 0)
-			camel_folder_set_flags (folder, camel_folder_get_flags (folder) | CAMEL_FOLDER_IS_TRASH);
-
-		g_free (real_trash_path);
-	}
-
-	g_object_unref (settings);
 
 	return folder;
 }
@@ -3255,6 +3177,79 @@ exit:
 	return success;
 }
 
+static gboolean
+imapx_store_search_multimailbox_sync (CamelStore *store,
+                                      GPtrArray *folders,
+                                      const gchar *search_key,
+                                      const GPtrArray *words,
+                                      GHashTable **out_results,
+                                      GCancellable *cancellable,
+                                      GError **error)
+{
+	CamelIMAPXStore *imapx_store = CAMEL_IMAPX_STORE (store);
+	CamelIMAPXConnManager *conn_man;
+	GPtrArray *mailboxes;
+	GHashTable *results;
+	guint ii;
+	gboolean success = FALSE;
+
+	g_return_val_if_fail (CAMEL_IS_IMAPX_STORE (store), FALSE);
+	g_return_val_if_fail (out_results != NULL, FALSE);
+
+	conn_man = camel_imapx_store_get_conn_manager (imapx_store);
+
+	mailboxes = g_ptr_array_new_full (folders->len, g_object_unref);
+	for (ii = 0; ii < folders->len; ii++) {
+		CamelFolder *folder = g_ptr_array_index (folders, ii);
+		if (CAMEL_IS_IMAPX_FOLDER (folder)) {
+			CamelIMAPXMailbox *mailbox = camel_imapx_folder_ref_mailbox (CAMEL_IMAPX_FOLDER (folder));
+			if (mailbox) {
+				g_ptr_array_add (mailboxes, mailbox);
+			}
+		}
+	}
+
+	if (mailboxes->len > 0) {
+		results = camel_imapx_conn_manager_multimailbox_search_sync (
+			conn_man, mailboxes, search_key, words, cancellable, error);
+
+		if (results) {
+			GHashTable *folder_results;
+
+			/* The results table from the conn-manager is keyed by IMAP mailbox
+			 * name (which uses the server's separator character). Translate to
+			 * Camel folder paths (always '/' separator) before returning. */
+			folder_results = g_hash_table_new_full (g_str_hash, g_str_equal,
+				g_free, (GDestroyNotify) g_ptr_array_unref);
+
+			for (ii = 0; ii < mailboxes->len; ii++) {
+				CamelIMAPXMailbox *mailbox = g_ptr_array_index (mailboxes, ii);
+				const gchar *mbox_name = camel_imapx_mailbox_get_name (mailbox);
+				gchar separator = camel_imapx_mailbox_get_separator (mailbox);
+				GPtrArray *uids = g_hash_table_lookup (results, mbox_name);
+				gchar *folder_path;
+
+				if (!uids)
+					continue;
+
+				folder_path = camel_imapx_mailbox_to_folder_path (mbox_name, separator);
+				g_hash_table_insert (folder_results, folder_path, g_ptr_array_ref (uids));
+			}
+
+			g_clear_pointer (&results, g_hash_table_unref);
+			*out_results = folder_results;
+			success = TRUE;
+		}
+	} else {
+		g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+			"No IMAPX folders to search");
+	}
+
+	g_ptr_array_unref (mailboxes);
+
+	return success;
+}
+
 static void
 imapx_store_mailbox_created (CamelIMAPXStore *imapx_store,
 			     CamelIMAPXMailbox *mailbox)
@@ -3333,6 +3328,7 @@ camel_imapx_store_class_init (CamelIMAPXStoreClass *class)
 	store_class->delete_folder_sync = imapx_store_delete_folder_sync;
 	store_class->rename_folder_sync = imapx_store_rename_folder_sync;
 	store_class->initial_setup_sync = imapx_initial_setup_sync;
+	store_class->search_multimailbox_sync = imapx_store_search_multimailbox_sync;
 
 	offline_store_class = CAMEL_OFFLINE_STORE_CLASS (class);
 	offline_store_class->dup_downsync_folders = imapx_store_dup_downsync_folders;

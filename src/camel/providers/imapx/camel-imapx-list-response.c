@@ -1,24 +1,11 @@
 /*
- * camel-imapx-list-response.c
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 /**
- * SECTION: camel-imapx-list-response
- * @include: camel/camel.h
- * @short_description: Stores an IMAP LIST response
+ * CamelIMAPXListResponse:
+ *
+ * Stores an IMAP LIST response
  *
  * #CamelIMAPXListResponse encapsulates an IMAP LIST response, which consists
  * of a set of mailbox attributes, a mailbox separator character, and the

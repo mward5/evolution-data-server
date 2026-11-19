@@ -1,18 +1,5 @@
 /*
- * e-soup-auth-bearer.h
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #if !defined (__LIBEDATASERVER_H_INSIDE__) && !defined (LIBEDATASERVER_COMPILATION)
@@ -51,10 +38,6 @@ typedef struct _ESoupAuthBearerPrivate ESoupAuthBearerPrivate;
 
 /**
  * ESoupAuthBearer:
- *
- * Contains only private data that should be read and manipulated using the
- * functions below.
- *
  * Since: 3.10
  **/
 struct _ESoupAuthBearer {
@@ -73,6 +56,8 @@ void		e_soup_auth_bearer_set_access_token
 						 const gchar *access_token,
 						 gint expires_in_seconds);
 gboolean	e_soup_auth_bearer_is_expired	(ESoupAuthBearer *bearer);
+void		e_soup_auth_bearer_clear_rejected
+						(ESoupAuthBearer *bearer);
 
 G_END_DECLS
 

@@ -1,20 +1,27 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
+
+/**
+ * CamelIndex:
+ *
+ * Abstract interface for content indexing.
+ *
+ * #CamelIndex is an abstract base class that provides a content-indexing
+ * interface for Camel. It is used to build and query full-text indexes of
+ * message content, enabling fast body-text searches without re-scanning
+ * message files.
+ *
+ * The concrete implementation is #CamelTextIndex, which stores the index
+ * on disk using a partition-table and block-file based format.
+ *
+ * When a #CamelIndex is attached to a #CamelFolderSummary (via
+ * camel_folder_summary_set_index()), summary generation will automatically
+ * add index entries for each message's text/... content. The index can then
+ * be queried by #CamelFolderSearch to accelerate `body-contains` searches.
+ **/
 
 #include "evolution-data-server-config.h"
 
@@ -36,10 +43,6 @@
 struct _CamelIndexPrivate {
 	gpointer dummy;
 };
-
-/* ********************************************************************** */
-/* CamelIndex */
-/* ********************************************************************** */
 
 G_DEFINE_TYPE_WITH_PRIVATE (CamelIndex, camel_index, G_TYPE_OBJECT)
 

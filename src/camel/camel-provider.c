@@ -1,23 +1,41 @@
-/* camel-provider.c: provider framework
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Bertrand Guiheneuf <bertrand@helixcode.com>
- *          Dan Winship <danw@ximian.com>
- *          Jeffrey Stedfast <fejj@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
+ * SPDX-FileContributor: Dan Winship <danw@ximian.com>
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
+
+/**
+ * CamelProvider:
+ *
+ * Plugin interface for mail storage and transport backends.
+ *
+ * #CamelProvider is the plugin descriptor structure that describes a mail
+ * storage or transport backend (or both). It is the first piece of information
+ * loaded from an external backend shared library and serves as the entry point
+ * for the plugin mechanism.
+ *
+ * From the client's perspective, a provider descriptor gives enough
+ * information to present the user with the configuration questions required
+ * to set up the service, including the list of supported authentication
+ * mechanisms.
+ *
+ * Key fields in the #CamelProvider structure:
+ * - `protocol`: The unique, lower-case URI scheme (e.g. `"imap"`).
+ * - `name`: A short human-readable name (e.g. `"IMAP"`).
+ * - `description`: A longer description of what the backend does.
+ * - `object_types`: The #CamelStore and/or #CamelTransport GTypes to
+ *   instantiate for this backend.
+ * - `authtypes`: The list of supported authentication mechanisms.
+ * - `url_flags`: Flags describing which URI fields are required or optional.
+ *
+ * Providers are loaded from shared libraries via camel_provider_load() and
+ * registered with the session using camel_session_add_service(). Once
+ * registered, #CamelSession uses the provider's `object_types` to instantiate
+ * the appropriate #CamelService subclass when camel_session_get_service() is
+ * called with a matching URI.
+ **/
 
 /* FIXME: Shouldn't we add a version number to providers ? */
 
@@ -186,7 +204,7 @@ camel_provider_traverse_directory (const gchar *provider_dir,
 {
 	GDir *dir;
 	const gchar *entry;
-	gchar *p, *name, buf[80];
+	gchar *name, buf[80];
 
 	dir = g_dir_open (provider_dir, 0, NULL);
 	if (!dir) {
@@ -202,9 +220,11 @@ camel_provider_traverse_directory (const gchar *provider_dir,
 	while ((entry = g_dir_read_name (dir))) {
 		CamelProviderModule *m = NULL;
 		FILE *fp;
+		gchar *ptr;
+		const gchar *ep;
 
-		p = strrchr (entry, '.');
-		if (!p || strcmp (p, ".urls") != 0)
+		ep = strrchr (entry, '.');
+		if (!ep || strcmp (ep, ".urls") != 0)
 			continue;
 
 		name = g_strdup_printf ("%s/%s", provider_dir, entry);
@@ -217,15 +237,15 @@ camel_provider_traverse_directory (const gchar *provider_dir,
 			continue;
 		}
 
-		p = strrchr (name, '.');
-		if (p)
-			strcpy (p, "." G_MODULE_SUFFIX);
+		ptr = strrchr (name, '.');
+		if (ptr)
+			strcpy (ptr, "." G_MODULE_SUFFIX);
 
 		while ((fgets (buf, sizeof (buf), fp))) {
 			buf[sizeof (buf) - 1] = '\0';
-			p = strchr (buf, '\n');
-			if (p)
-				*p = '\0';
+			ptr = strchr (buf, '\n');
+			if (ptr)
+				*ptr = '\0';
 
 			if (*buf) {
 				gchar *protocol = g_strdup (buf);

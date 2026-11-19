@@ -1,19 +1,33 @@
 /*
- * camel-operation.c
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
+
+/**
+ * CamelOperation:
+ *
+ * Progress reporting and cancellation for long-running tasks.
+ *
+ * #CamelOperation is a bi-directional rendezvous mechanism used to communicate
+ * status information from long-running Camel tasks back to the calling
+ * application, and to allow the application to cancel those tasks.
+ *
+ * The typical usage pattern is:
+ *
+ * 1. Create a #CamelOperation with a status callback.
+ * 2. Push it onto the current thread with camel_operation_push_message() /
+ *    or use it as a #GCancellable passed to async operations.
+ * 3. Long-running Camel functions report progress via
+ *    camel_operation_progress() and check for cancellation via the
+ *    #GCancellable interface.
+ * 4. The client can cancel the operation by calling g_cancellable_cancel()
+ *    on the #CamelOperation (which is a #GCancellable subclass).
+ *
+ * Status messages follow a push/pop model: camel_operation_push_message()
+ * starts a new operation description (emitting the "status" signal), and
+ * camel_operation_pop_message() ends it, restoring the previous description.
+ * camel_operation_progress() reports percentage-based progress within the
+ * current message.
+ **/
 
 #include "evolution-data-server-config.h"
 

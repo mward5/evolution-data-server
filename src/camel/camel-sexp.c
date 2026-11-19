@@ -1,24 +1,36 @@
-/* A simple, extensible s-exp evaluation engine.
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 /*
- *   The following built-in s-exp's are supported:
+ * NOTE: the filters are defined in camel-filter-search.c
+ */
+
+/**
+ * CamelSExp:
+ *
+ * S-expression matching functions for message filtering.
+ *
+ * #CamelSExp implements the s-expression matching functions used by
+ * #CamelFilterDriver to evaluate filter rules against messages.
+ *
+ * Match expressions operate on a single message and return a boolean.
+ * Available matching functions include:
+ *
+ * - `(body-contains string …)` — matches if the message body contains any
+ *   of the given strings (searches text/… parts with tag-stripping for HTML).
+ * - `(header-contains header string …)` / `(header-matches …)` /
+ *   `(header-starts-with …)` / `(header-ends-with …)` — header matching.
+ * - `(header-exists header)` — tests whether a header is present.
+ * - `(match-all expression)` — evaluates a boolean against all messages.
+ * - `(user-flag flag)` / `(user-tag tag value)` — user metadata matching.
+ * - `(system-flag flag)` — system flag matching (seen, deleted, flagged, etc.).
+ * - `(pipe-message cmd)` — runs the message through an external program whose
+ *   exit code determines the match result.
+ *
+ * # The following built-in s-exp's are supported:
  *
  *   list = (and list*)
  *      perform an intersection of a number of lists, and return that.
@@ -53,7 +65,7 @@
  *   string = (cast-string string|int|bool)
  *         Cast to a string value.
  *
- *   Comparison operators:
+ * ## Comparison operators:
  *
  *   bool = (< gint gint)
  *   bool = (> gint gint)
@@ -66,9 +78,9 @@
  *   bool = (< time_t time_t)
  *   bool = (> time_t time_t)
  *   bool = (= time_t time_t)
- *      Perform a comparision of 2 integers, 2 string values, or 2 time values.
+ *      Perform a comparison of 2 integers, 2 string values, or 2 time values.
  *
- *   Function flow:
+ * ## Function flow:
  *
  *   type = (if bool function)
  *   type = (if bool function function)
@@ -76,6 +88,8 @@
  *
  *   type = (begin  func func func)
  *         Execute a sequence.  The last function return is the return type.
+
+ * Since: 3.4
  */
 
 #include "evolution-data-server-config.h"

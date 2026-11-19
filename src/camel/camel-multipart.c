@@ -1,21 +1,27 @@
-/* camel-multipart.c : Abstract class for a multipart
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Bertrand Guiheneuf <bertrand@helixcode.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
  */
+
+/**
+ * CamelMultipart:
+ *
+ * A container for multiple MIME parts.
+ *
+ * #CamelMultipart is a #CamelDataWrapper subclass that represents a
+ * multipart/... MIME container. It holds an ordered list of #CamelMimePart
+ * children separated by a boundary string.
+ *
+ * Subclasses include #CamelMultipartSigned for multipart/signed (signed
+ * messages) and #CamelMultipartEncrypted for multipart/encrypted (encrypted
+ * messages).
+ *
+ * Parts can be added with camel_multipart_add_part() and accessed by index
+ * with camel_multipart_get_part(). The boundary string used to delimit parts
+ * in the encoded representation is managed via camel_multipart_set_boundary()
+ * and camel_multipart_get_boundary().
+ **/
 
 #include "evolution-data-server-config.h"
 

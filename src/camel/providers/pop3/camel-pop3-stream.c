@@ -1,19 +1,7 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 /* This is *identical* to the camel-nntp-stream, so should probably
@@ -347,9 +335,13 @@ camel_pop3_stream_line (CamelPOP3Stream *is,
 			}
 		}
 
-		/* limit this for bad server data? */
+		/* limit this for bad server data */
 		oldlen = o - is->linebuf;
 		newlen = (is->lineend - is->linebuf) * 3 / 2;
+		if (newlen > 10 * 1024 * 1024) {
+			g_warning ("POP3 server sent line exceeding 10 MB, aborting");
+			return -1;
+		}
 		is->lineptr = is->linebuf = g_realloc (is->linebuf, newlen);
 		is->lineend = is->linebuf + newlen;
 		oe = is->lineend - 1;

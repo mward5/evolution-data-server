@@ -1,21 +1,23 @@
-/* camel-multipart.c : Abstract class for a multipart
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
+
+/**
+ * CamelMultipartSigned:
+ *
+ * A multipart/signed MIME container.
+ *
+ * #CamelMultipartSigned is a #CamelMultipart subclass for handling
+ * multipart/signed MIME parts as defined in RFC 1847. It holds the signed
+ * content part and the signature part together, and integrates with
+ * #CamelCipherContext to verify or create signatures.
+ *
+ * The signed content is accessible via the standard #CamelMultipart part
+ * accessors, and the signature validity result (a #CamelCipherValidity) can
+ * be retrieved after verification.
+ **/
 
 #include "evolution-data-server-config.h"
 

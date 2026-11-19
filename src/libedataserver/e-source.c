@@ -1,18 +1,5 @@
 /*
- * e-source.c
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 /**
@@ -136,6 +123,8 @@ struct _ESourcePrivate {
 	GSource *connection_status_change;
 	GMutex connection_status_change_lock;
 	ESourceConnectionStatus connection_status;
+
+	GSource *dbus_data_change;
 
 	GMutex property_lock;
 
@@ -792,12 +781,18 @@ source_parse_dbus_data (ESource *source,
 	return TRUE;
 }
 
-static void
-source_notify_dbus_data_cb (EDBusSource *dbus_source,
-                            GParamSpec *pspec,
-                            ESource *source)
+static gboolean
+source_idle_dbus_data_change_cb (gpointer user_data)
 {
+	ESource *source = E_SOURCE (user_data);
 	GError *local_error = NULL;
+
+	if (g_source_is_destroyed (g_main_current_source ()))
+		return FALSE;
+
+	g_mutex_lock (&source->priv->changed_lock);
+	g_clear_pointer (&source->priv->dbus_data_change, g_source_unref);
+	g_mutex_unlock (&source->priv->changed_lock);
 
 	g_rec_mutex_lock (&source->priv->lock);
 
@@ -812,6 +807,28 @@ source_notify_dbus_data_cb (EDBusSource *dbus_source,
 	}
 
 	g_rec_mutex_unlock (&source->priv->lock);
+
+	return FALSE;
+}
+
+static void
+source_notify_dbus_data_cb (EDBusSource *dbus_source,
+                            GParamSpec *pspec,
+                            ESource *source)
+{
+	g_mutex_lock (&source->priv->changed_lock);
+	if (source->priv->dbus_data_change == NULL &&
+	    source->priv->initialized) {
+		source->priv->dbus_data_change = g_idle_source_new ();
+		g_source_set_callback (
+			source->priv->dbus_data_change,
+			source_idle_dbus_data_change_cb,
+			g_object_ref (source), g_object_unref);
+		g_source_attach (
+			source->priv->dbus_data_change,
+			source->priv->main_context);
+	}
+	g_mutex_unlock (&source->priv->changed_lock);
 }
 
 static gboolean
@@ -1058,6 +1075,18 @@ e_source_dbus_object_notify_source_cb (GObject *dbus_object,
 }
 
 static void
+e_source_dbus_object_interfaces_changed_cb (GDBusObject *dbus_object,
+					    GDBusInterface *interface,
+					    gpointer user_data)
+{
+	ESource *source = user_data;
+
+	g_return_if_fail (E_IS_SOURCE (source));
+
+	e_source_changed (source);
+}
+
+static void
 source_set_dbus_object (ESource *source,
                         EDBusObject *dbus_object)
 {
@@ -1072,6 +1101,10 @@ source_set_dbus_object (ESource *source,
 
 	g_signal_connect_object (source->priv->dbus_object, "notify::source",
 		G_CALLBACK (e_source_dbus_object_notify_source_cb), source, 0);
+	g_signal_connect_object (source->priv->dbus_object, "interface-added",
+		G_CALLBACK (e_source_dbus_object_interfaces_changed_cb), source, 0);
+	g_signal_connect_object (source->priv->dbus_object, "interface-removed",
+		G_CALLBACK (e_source_dbus_object_interfaces_changed_cb), source, 0);
 }
 
 static void
@@ -1279,6 +1312,14 @@ source_dispose (GObject *object)
 	}
 	g_mutex_unlock (&priv->connection_status_change_lock);
 
+	g_mutex_lock (&priv->changed_lock);
+	if (priv->dbus_data_change != NULL) {
+		g_source_destroy (priv->dbus_data_change);
+		g_source_unref (priv->dbus_data_change);
+		priv->dbus_data_change = NULL;
+	}
+	g_mutex_unlock (&priv->changed_lock);
+
 	g_hash_table_remove_all (priv->extensions);
 
 	/* Chain up to parent's dispose() method. */
@@ -1408,9 +1449,11 @@ source_remove_sync (ESource *source,
 			g_main_loop_ref (remove_context->main_loop),
 			(GDestroyNotify) g_main_loop_unref);
 		g_source_attach (timeout_source, remove_context->main_context);
-		g_source_unref (timeout_source);
 
 		g_main_loop_run (remove_context->main_loop);
+
+		g_source_destroy (timeout_source);
+		g_source_unref (timeout_source);
 	}
 
 	g_signal_handler_disconnect (source, notify_dbus_object_id);
@@ -1835,10 +1878,15 @@ source_get_oauth2_access_token_thread (GTask         *task,
 		E_SOURCE (source_object), cancellable,
 		&async_context->access_token,
 		&async_context->expires_in,
-		&local_error))
+		&local_error)) {
 		g_task_return_pointer (task, g_steal_pointer (&async_context), async_context_free);
-	else
+	} else {
+		if (!local_error) {
+			local_error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_FAILED,
+				_("Failed to obtain OAuth 2.0 access token"));
+		}
 		g_task_return_error (task, g_steal_pointer (&local_error));
+	}
 
 	g_clear_pointer (&async_context, async_context_free);
 }
@@ -3031,13 +3079,34 @@ e_source_get_extension (ESource *source,
 
 	/* Create a new instance of the appropriate GType. */
 	if (class != NULL) {
+		GType extension_type = G_TYPE_FROM_CLASS (class);
+
+		g_clear_pointer (&hash_table, g_hash_table_destroy);
+
 		g_mutex_lock (&source->priv->changed_lock);
 		source->priv->ignore_changed_signal++;
 		g_mutex_unlock (&source->priv->changed_lock);
 
+		g_rec_mutex_unlock (&source->priv->lock);
+
 		extension = g_object_new (
-			G_TYPE_FROM_CLASS (class),
+			extension_type,
 			"source", source, NULL);
+
+		g_rec_mutex_lock (&source->priv->lock);
+
+		/* Another thread may have created the same extension
+		 * while the lock was released; use the existing one. */
+		if (g_hash_table_lookup (source->priv->extensions, extension_name) != NULL) {
+			g_mutex_lock (&source->priv->changed_lock);
+			source->priv->ignore_changed_signal--;
+			g_mutex_unlock (&source->priv->changed_lock);
+
+			g_clear_object (&extension);
+			extension = g_hash_table_lookup (source->priv->extensions, extension_name);
+			goto exit;
+		}
+
 		source_load_from_key_file (
 			G_OBJECT (extension),
 			source->priv->key_file,
@@ -3058,7 +3127,7 @@ e_source_get_extension (ESource *source,
 #endif
 	}
 
-	g_hash_table_destroy (hash_table);
+	g_clear_pointer (&hash_table, g_hash_table_destroy);
 
 exit:
 	g_rec_mutex_unlock (&source->priv->lock);
@@ -3081,7 +3150,7 @@ gboolean
 e_source_has_extension (ESource *source,
                         const gchar *extension_name)
 {
-	ESourceExtension *extension;
+	gboolean has_it;
 
 	g_return_val_if_fail (E_IS_SOURCE (source), FALSE);
 	g_return_val_if_fail (extension_name != NULL, FALSE);
@@ -3089,8 +3158,9 @@ e_source_has_extension (ESource *source,
 	g_rec_mutex_lock (&source->priv->lock);
 
 	/* Two cases to check for, either one is good enough:
-	 * 1) Our internal GKeyFile has a group named 'extension_name'.
-	 * 2) Our 'extensions' table has an entry for 'extension_name'.
+	 * 1) Our 'extensions' table has an entry for 'extension_name'.
+	 * 2) Our internal GKeyFile has a group named 'extension_name'
+	 *    AND it maps to a registered ESourceExtension subclass.
 	 *
 	 * We have to check both data structures in case a new extension
 	 * not present in the GKeyFile was instantiated, but we have not
@@ -3102,16 +3172,19 @@ e_source_has_extension (ESource *source,
 	 * a registered extension name and not just an arbitrary key
 	 * file group name. */
 
-	if (g_key_file_has_group (source->priv->key_file, extension_name)) {
-		extension = e_source_get_extension (source, extension_name);
-	} else {
-		GHashTable *hash_table = source->priv->extensions;
-		extension = g_hash_table_lookup (hash_table, extension_name);
+	has_it = g_hash_table_contains (source->priv->extensions, extension_name);
+
+	if (!has_it && g_key_file_has_group (source->priv->key_file, extension_name)) {
+		GHashTable *hash_table;
+
+		hash_table = source_find_extension_classes ();
+		has_it = g_hash_table_contains (hash_table, extension_name);
+		g_hash_table_destroy (hash_table);
 	}
 
 	g_rec_mutex_unlock (&source->priv->lock);
 
-	return (extension != NULL);
+	return has_it;
 }
 
 /**

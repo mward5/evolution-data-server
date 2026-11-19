@@ -1,22 +1,8 @@
-/* camel-pop3-provider.c: pop3 provider registration code
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors :
- *   Dan Winship <danw@ximian.com>
- *   Michael Zucchi <notzed@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Dan Winship <danw@ximian.com>
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -31,53 +17,54 @@ CamelProviderConfEntry imapx_conf_entries[] = {
 	{ CAMEL_PROVIDER_CONF_SECTION_START, "mailcheck", NULL,
 	  N_("Checking for New Mail") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "check-all", NULL,
-	  N_("C_heck for new messages in all folders"), "1" },
+	  N_("C_heck for new messages in all folders") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "check-subscribed", NULL,
-	  N_("Ch_eck for new messages in subscribed folders"), "0" },
+	  N_("Ch_eck for new messages in subscribed folders") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "use-qresync", NULL,
-	  N_("Use _Quick Resync if the server supports it"), "0" },
+	  N_("Use _Quick Resync if the server supports it") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "use-idle", NULL,
-	  N_("_Listen for server change notifications"), "1" },
+	  N_("_Listen for server change notifications") },
 	{ CAMEL_PROVIDER_CONF_SECTION_END },
 	{ CAMEL_PROVIDER_CONF_SECTION_START, "folders", NULL,
 	  N_("Folders") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "use-subscriptions", NULL,
-	  N_("_Show only subscribed folders"), "0" },
+	  N_("_Show only subscribed folders") },
+	{ CAMEL_PROVIDER_CONF_PLACEHOLDER, "imapx-subscriptions-placeholder", NULL },
 	{ CAMEL_PROVIDER_CONF_SECTION_END },
 	{ CAMEL_PROVIDER_CONF_SECTION_START, "general", NULL, N_("Options") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "filter-all", NULL,
-	  N_("Apply _filters to new messages in all folders"), "0" },
+	  N_("Apply _filters to new messages in all folders") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "filter-inbox", "!filter-all",
-	  N_("_Apply filters to new messages in Inbox on this server"), "1" },
+	  N_("_Apply filters to new messages in Inbox on this server") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "filter-junk", NULL,
-	  N_("Check new messages for _Junk contents"), "0" },
+	  N_("Check new messages for _Junk contents") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "filter-junk-inbox", "filter-junk",
-	  N_("Only check for Junk messages in the In_box folder"), "0" },
+	  N_("Only check for Junk messages in the In_box folder") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "stay-synchronized", NULL,
-	  N_("Synchroni_ze remote mail locally in all folders"), "0" },
+	  N_("Synchroni_ze remote mail locally in all folders") },
 	{ CAMEL_PROVIDER_CONF_PLACEHOLDER, "imapx-limit-by-age-placeholder", NULL },
 	{ CAMEL_PROVIDER_CONF_SECTION_END },
 	{ CAMEL_PROVIDER_CONF_ADVANCED_SECTION_START, NULL, NULL, NULL },
 	{ CAMEL_PROVIDER_CONF_CHECKSPIN, "concurrent-connections", NULL,
-	  N_("Numbe_r of concurrent connections to use"), "y:1:3:7" },
+	  N_("Numbe_r of concurrent connections to use") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "full-update-on-metered-network", NULL,
-	  N_("Enable full folder update on _metered network"), "1" },
+	  N_("Enable full folder update on _metered network") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "send-client-id", NULL,
-	  N_("Send client I_D to the server"), "0" },
+	  N_("Send client I_D to the server") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "use-namespace", NULL,
-	  N_("O_verride server-supplied folder namespace"), "0" },
+	  N_("O_verride server-supplied folder namespace") },
 	{ CAMEL_PROVIDER_CONF_ENTRY, "namespace", "use-namespace",
 	  N_("Namespace:") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "ignore-other-users-namespace", NULL,
-	  N_("Ignore other users namespace"), "0" },
+	  N_("Ignore other users namespace") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "ignore-shared-folders-namespace", NULL,
-	  N_("Ignore shared folders namespace"), "0" },
+	  N_("Ignore shared folders namespace") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "use-shell-command", NULL,
-	  N_("Use shell command for connecting to the server"), "0" },
+	  N_("Use shell command for connecting to the server") },
 	{ CAMEL_PROVIDER_CONF_ENTRY, "shell-command", "use-shell-command",
-	  N_("Command:"), "" },
+	  N_("Command:") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "use-multi-fetch", NULL,
-	  N_("Download large messages in chunks"), "0" },
+	  N_("Download large messages in chunks") },
 	{ CAMEL_PROVIDER_CONF_OPTIONS, "fetch-order", NULL,
 	  /* Translators: This constructs either "Fetch new messages in ascending order" or "Fetch new messages in descending order" */
 	  N_("Fetch new messages in"), "ascending:ascending order:descending:descending order" },
@@ -90,7 +77,7 @@ CamelProviderConfEntry imapx_conf_entries[] = {
 	  /* Translators: The '%s' is replaced with a spin button with the actual value */
 	  N_("Store folder changes after %s second(s)"), "" },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "single-client-mode", NULL,
-	  N_("Single client mode"), "0" },
+	  N_("Single client mode") },
 	{ CAMEL_PROVIDER_CONF_SECTION_END },
 	{ CAMEL_PROVIDER_CONF_END }
 };

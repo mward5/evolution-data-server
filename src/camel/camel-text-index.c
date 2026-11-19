@@ -1,19 +1,7 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -42,7 +30,7 @@
 /* cursor debug */
 #define c(x)
 
-#define CAMEL_TEXT_INDEX_MAX_WORDLEN  (36)
+#define CAMEL_TEXT_INDEX_MAX_WORDLEN  (128)
 
 #define CAMEL_TEXT_INDEX_LOCK(kf, lock) \
 	(g_rec_mutex_lock (&((CamelTextIndex *) kf)->priv->lock))
@@ -361,7 +349,7 @@ tmp_name (const gchar *in,
           gchar *o,
           gsize o_len)
 {
-	gchar *s;
+	const gchar *s;
 
 	s = strrchr (in, '/');
 	if (s) {
@@ -902,6 +890,11 @@ camel_text_index_new (const gchar *path,
 	p->word_hash = camel_partition_table_new (p->blocks, rb->word_hash_root);
 	p->name_index = camel_key_table_new (p->blocks, rb->name_index_root);
 	p->name_hash = camel_partition_table_new (p->blocks, rb->name_hash_root);
+
+	if (p->word_hash != NULL && p->word_index != NULL)
+		camel_partition_table_set_key_table (p->word_hash, p->word_index);
+	if (p->name_hash != NULL && p->name_index != NULL)
+		camel_partition_table_set_key_table (p->name_hash, p->name_index);
 
 	if (p->word_index == NULL || p->word_hash == NULL
 	    || p->name_index == NULL || p->name_hash == NULL) {
@@ -1891,6 +1884,8 @@ main (gint argc,
 
 	ki = camel_key_table_new (bs, root->word_root);
 	cpi = camel_partition_table_new (bs, root->word_hash_root);
+	if (cpi != NULL && ki != NULL)
+		camel_partition_table_set_key_table (cpi, ki);
 
 	fp = fopen ("/usr/dict/words", "r");
 	if (fp == NULL) {

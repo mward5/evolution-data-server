@@ -1,20 +1,25 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
+
+/**
+ * CamelVeeStore:
+ *
+ * A store that manages a collection of virtual folders.
+ *
+ * #CamelVeeStore is a #CamelStore subclass that manages a list of virtual
+ * (#CamelVeeFolder) folders. It handles the store-level operations such as
+ * folder creation, renaming, and deletion for virtual folders.
+ *
+ * #CamelVeeStore manages the virtual folder list entirely at run-time; the
+ * driving application is responsible for creating and initialising the virtual
+ * folders within the store on each session start.
+ *
+ * #CamelVeeStore also automatically maintains an UNMATCHED virtual folder
+ * in the folder listings.
+ **/
 
 #include "evolution-data-server-config.h"
 

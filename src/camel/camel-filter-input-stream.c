@@ -1,25 +1,11 @@
 /*
- * camel-filter-input-stream.c
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 /**
- * SECTION: camel-filter-input-stream
- * @short_description: Filtered input stream
- * @include: camel/camel.h
- * @see_also: #GInputStream, #CamelMimeFilter
+ * CamelFilterInputStream:
+ *
+ * Filtered input stream.
  *
  * #CamelFilterInputStream is similar to #GConverterInputStream, except it
  * operates on a #CamelMimeFilter instead of a #GConverter.

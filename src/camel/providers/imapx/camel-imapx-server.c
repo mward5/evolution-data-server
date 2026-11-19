@@ -1,18 +1,6 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -166,6 +154,10 @@ static gboolean	imapx_untagged_recent		(CamelIMAPXServer *is,
 						 GInputStream *input_stream,
 						 GCancellable *cancellable,
 						 GError **error);
+static gboolean	imapx_untagged_esearch		(CamelIMAPXServer *is,
+						 GInputStream *input_stream,
+						 GCancellable *cancellable,
+						 GError **error);
 static gboolean	imapx_untagged_search		(CamelIMAPXServer *is,
 						 GInputStream *input_stream,
 						 GCancellable *cancellable,
@@ -183,6 +175,7 @@ enum {
 	IMAPX_UNTAGGED_ID_BAD = 0,
 	IMAPX_UNTAGGED_ID_BYE,
 	IMAPX_UNTAGGED_ID_CAPABILITY,
+	IMAPX_UNTAGGED_ID_ESEARCH,
 	IMAPX_UNTAGGED_ID_EXISTS,
 	IMAPX_UNTAGGED_ID_EXPUNGE,
 	IMAPX_UNTAGGED_ID_FETCH,
@@ -206,6 +199,7 @@ static const CamelIMAPXUntaggedRespHandlerDesc _untagged_descr[] = {
 	{CAMEL_IMAPX_UNTAGGED_BAD, imapx_untagged_ok_no_bad, NULL, FALSE},
 	{CAMEL_IMAPX_UNTAGGED_BYE, imapx_untagged_bye, NULL, FALSE},
 	{CAMEL_IMAPX_UNTAGGED_CAPABILITY, imapx_untagged_capability, NULL, FALSE},
+	{CAMEL_IMAPX_UNTAGGED_ESEARCH, imapx_untagged_esearch, NULL, FALSE},
 	{CAMEL_IMAPX_UNTAGGED_EXISTS, imapx_untagged_exists, NULL, TRUE},
 	{CAMEL_IMAPX_UNTAGGED_EXPUNGE, imapx_untagged_expunge, NULL, TRUE},
 	{CAMEL_IMAPX_UNTAGGED_FETCH, imapx_untagged_fetch, NULL, TRUE},
@@ -272,6 +266,9 @@ struct _CamelIMAPXServerPrivate {
 	 * when finished and reset the pointer to NULL. */
 	GArray *search_results;
 	GMutex search_results_lock;
+
+	GHashTable *esearch_results;
+	GMutex esearch_results_lock;
 
 	GHashTable *known_alerts;
 	GMutex known_alerts_lock;
@@ -829,13 +826,6 @@ imapx_untagged_expunge (CamelIMAPXServer *is,
 	cmd = camel_imapx_command_ref (is->priv->current_command);
 
 	COMMAND_UNLOCK (is);
-
-	if (!cmd->copy_move_summary && cmd->copy_move_folder) {
-		cmd->copy_move_summary = camel_folder_summary_dup_uids (camel_folder_get_folder_summary (cmd->copy_move_folder));
-
-		if (cmd->copy_move_summary)
-			camel_folder_sort_uids (cmd->copy_move_folder, cmd->copy_move_summary);
-	}
 
 	if (cmd->copy_move_summary) {
 		if (expunged_idx - 1 < cmd->copy_move_summary->len) {
@@ -1810,6 +1800,110 @@ imapx_untagged_search (CamelIMAPXServer *is,
 
 exit:
 	g_array_unref (search_results);
+
+	return success;
+}
+
+static gboolean
+imapx_untagged_esearch (CamelIMAPXServer *is,
+                        GInputStream *input_stream,
+                        GCancellable *cancellable,
+                        GError **error)
+{
+	gint tok;
+	guint len;
+	guchar *token = NULL;
+	gboolean success = FALSE;
+	gchar *tag = NULL;
+	gchar *mailbox_name = NULL;
+	gchar *utf8_mailbox_name = NULL;
+	guint64 uidvalidity = 0;
+	GArray *uids = NULL;
+
+	tok = camel_imapx_input_stream_token (CAMEL_IMAPX_INPUT_STREAM (input_stream), &token, &len, cancellable, error);
+	if (tok != '(') {
+		g_set_error (error, CAMEL_IMAPX_ERROR, CAMEL_IMAPX_ERROR_SERVER_RESPONSE_MALFORMED,
+			"ESEARCH: expecting '('");
+		goto exit;
+	}
+
+	while (TRUE) {
+		tok = camel_imapx_input_stream_token (CAMEL_IMAPX_INPUT_STREAM (input_stream), &token, &len, cancellable, error);
+		if (tok == ')')
+			break;
+		if (tok == IMAPX_TOK_ERROR)
+			goto exit;
+
+		if (token && g_ascii_strcasecmp ((gchar *) token, "TAG") == 0) {
+			tok = camel_imapx_input_stream_token (CAMEL_IMAPX_INPUT_STREAM (input_stream), &token, &len, cancellable, error);
+			if (tok == IMAPX_TOK_ERROR)
+				goto exit;
+			g_free (tag);
+			tag = g_strndup ((gchar *) token, len);
+		} else if (token && g_ascii_strcasecmp ((gchar *) token, "MAILBOX") == 0) {
+			tok = camel_imapx_input_stream_token (CAMEL_IMAPX_INPUT_STREAM (input_stream), &token, &len, cancellable, error);
+			if (tok == IMAPX_TOK_ERROR)
+				goto exit;
+			g_free (mailbox_name);
+			mailbox_name = g_strndup ((gchar *) token, len);
+		} else if (token && g_ascii_strcasecmp ((gchar *) token, "UIDVALIDITY") == 0) {
+			if (!camel_imapx_input_stream_number (CAMEL_IMAPX_INPUT_STREAM (input_stream), &uidvalidity, cancellable, error))
+				goto exit;
+		} else {
+			tok = camel_imapx_input_stream_token (CAMEL_IMAPX_INPUT_STREAM (input_stream), &token, &len, cancellable, error);
+			if (tok == IMAPX_TOK_ERROR)
+				goto exit;
+		}
+	}
+
+	tok = camel_imapx_input_stream_token (CAMEL_IMAPX_INPUT_STREAM (input_stream), &token, &len, cancellable, error);
+	if (tok == '\n') {
+		success = TRUE;
+		goto exit;
+	}
+	if (tok == IMAPX_TOK_ERROR)
+		goto exit;
+
+	if (token && g_ascii_strcasecmp ((gchar *) token, "UID") == 0) {
+		tok = camel_imapx_input_stream_token (CAMEL_IMAPX_INPUT_STREAM (input_stream), &token, &len, cancellable, error);
+		if (tok == IMAPX_TOK_ERROR)
+			goto exit;
+		if (token && g_ascii_strcasecmp ((gchar *) token, "ALL") == 0) {
+			uids = imapx_parse_uids (CAMEL_IMAPX_INPUT_STREAM (input_stream), cancellable, error);
+			if (!uids)
+				goto exit;
+		}
+	}
+
+	while (tok != '\n') {
+		tok = camel_imapx_input_stream_token (CAMEL_IMAPX_INPUT_STREAM (input_stream), &token, &len, cancellable, error);
+		if (tok == IMAPX_TOK_ERROR)
+			goto exit;
+	}
+
+	if (mailbox_name && uids) {
+		if (camel_imapx_server_get_utf8_accept (is)) {
+			utf8_mailbox_name = g_strdup (mailbox_name);
+		} else {
+			utf8_mailbox_name = camel_utf7_utf8 (mailbox_name);
+		}
+
+		g_mutex_lock (&is->priv->esearch_results_lock);
+		if (is->priv->esearch_results == NULL) {
+			is->priv->esearch_results = g_hash_table_new_full (
+				g_str_hash, g_str_equal, g_free, (GDestroyNotify) g_array_unref);
+		}
+
+		g_hash_table_insert (is->priv->esearch_results, utf8_mailbox_name, g_array_ref (uids));
+		g_mutex_unlock (&is->priv->esearch_results_lock);
+	}
+
+	success = TRUE;
+
+ exit:
+	g_free (tag);
+	g_free (mailbox_name);
+	g_clear_pointer (&uids, g_array_unref);
 
 	return success;
 }
@@ -3776,6 +3870,10 @@ imapx_server_finalize (GObject *object)
 		g_array_unref (is->priv->search_results);
 	g_mutex_clear (&is->priv->search_results_lock);
 
+	if (is->priv->esearch_results != NULL)
+		g_hash_table_destroy (is->priv->esearch_results);
+	g_mutex_clear (&is->priv->esearch_results_lock);
+
 	g_hash_table_destroy (is->priv->known_alerts);
 	g_mutex_clear (&is->priv->known_alerts_lock);
 
@@ -3855,6 +3953,7 @@ camel_imapx_server_init (CamelIMAPXServer *is)
 	g_mutex_init (&is->priv->changes_lock);
 	g_mutex_init (&is->priv->search_results_lock);
 	g_mutex_init (&is->priv->known_alerts_lock);
+	g_mutex_init (&is->priv->esearch_results_lock);
 
 	g_weak_ref_init (&is->priv->store, NULL);
 	g_weak_ref_init (&is->priv->select_mailbox, NULL);
@@ -4479,11 +4578,6 @@ camel_imapx_server_get_message_sync (CamelIMAPXServer *is,
 		return NULL;
 	}
 
-	/* This makes sure that if any file is left on the disk, it is not reused.
-	   That can happen when the previous message download had been cancelled
-	   or finished with an error. */
-	camel_data_cache_remove (message_cache, "tmp", message_uid, NULL);
-
 	/* Check whether the message is already downloaded by another job */
 	cache_stream = camel_data_cache_get (message_cache, "cur", message_uid, NULL);
 	if (cache_stream) {
@@ -4495,7 +4589,7 @@ camel_imapx_server_get_message_sync (CamelIMAPXServer *is,
 		return result_stream;
 	}
 
-	cache_stream = camel_data_cache_add (message_cache, "tmp", message_uid, error);
+	cache_stream = camel_data_cache_add_atomic (message_cache, "cur", message_uid, error);
 	if (cache_stream == NULL) {
 		g_clear_object (&mi);
 		return NULL;
@@ -4581,7 +4675,7 @@ camel_imapx_server_get_message_sync (CamelIMAPXServer *is,
 			g_io_stream_close (cache_stream, cancellable, &local_error);
 			g_prefix_error (
 				&local_error, "%s: ",
-				_("Failed to close the tmp stream"));
+				_("Failed to close the cache stream"));
 		}
 
 		if (local_error == NULL &&
@@ -4592,42 +4686,12 @@ camel_imapx_server_get_message_sync (CamelIMAPXServer *is,
 		}
 
 		if (local_error == NULL) {
-			gchar *cur_filename;
-			gchar *tmp_filename;
-			gchar *dirname;
-
-			cur_filename = camel_data_cache_get_filename (message_cache, "cur", message_uid);
-			tmp_filename = camel_data_cache_get_filename (message_cache, "tmp", message_uid);
-
-			dirname = g_path_get_dirname (cur_filename);
-			g_mkdir_with_parents (dirname, 0700);
-			g_free (dirname);
-
-			if (g_rename (tmp_filename, cur_filename) == 0) {
-				/* Exchange the "tmp" stream for the "cur" stream. */
-				g_clear_object (&cache_stream);
-				cache_stream = camel_data_cache_get (message_cache, "cur", message_uid, &local_error);
-			} else {
-				g_set_error (
-					&local_error, G_FILE_ERROR,
-					g_file_error_from_errno (errno),
-					"%s: %s",
-					_("Failed to copy the tmp file"),
-					g_strerror (errno));
-			}
-
-			g_free (cur_filename);
-			g_free (tmp_filename);
+			cache_stream = camel_data_cache_commit_atomic (message_cache, g_steal_pointer (&cache_stream), &local_error);
+		} else {
+			camel_data_cache_discard_atomic (message_cache, g_steal_pointer (&cache_stream));
 		}
-
-		/* Delete the 'tmp' file only if the operation succeeded. It's because
-		   cancelled operations end before they are properly finished (IMAP-protocol speaking),
-		   thus if any other GET_MESSAGE operation was waiting for this job, then it
-		   realized that the message was not downloaded and opened its own "tmp" file, but
-		   of the same name, thus this remove would drop file which could be used
-		   by a different GET_MESSAGE job. */
-		if (!local_error && !g_cancellable_is_cancelled (cancellable))
-			camel_data_cache_remove (message_cache, "tmp", message_uid, NULL);
+	} else {
+		camel_data_cache_discard_atomic (message_cache, g_steal_pointer (&cache_stream));
 	}
 
 	if (!local_error) {
@@ -4711,55 +4775,47 @@ imapx_copy_move_message_cache (CamelFolder *source_folder,
 	if (!g_file_test (destination_filename, G_FILE_TEST_EXISTS)) {
 		GIOStream *stream;
 
-		/* To create the cache folder structure for the message file */
-		stream = camel_data_cache_add (imapx_destination_folder->cache, "cur", destination_uid, NULL);
+		stream = camel_data_cache_add_atomic (imapx_destination_folder->cache, "cur", destination_uid, NULL);
 		if (stream) {
-			g_clear_object (&stream);
-
-			/* Remove the empty file, it's gonna be replaced with actual message */
-			g_unlink (destination_filename);
-
 			if (delete_originals) {
+				/* g_rename is atomic; release the reservation first. */
+				camel_data_cache_discard_atomic (imapx_destination_folder->cache, g_steal_pointer (&stream));
 				if (g_rename (source_filename, destination_filename) == -1) {
 					gint errsv = errno;
 					if (errsv != ENOENT)
 						g_warning ("%s: Failed to rename '%s' to '%s': %s", G_STRFUNC, source_filename, destination_filename, g_strerror (errsv));
 				}
 			} else {
-				GFile *source, *tmp_file;
+				GFile *source_file;
+				GFileInputStream *source_input;
 				GError *local_error = NULL;
-				gchar *tmp_filename;
-				gchar *dirname;
 
-				/* Copy via a "tmp" file so an interrupted copy never leaves
-				   a truncated "cur" entry that would be treated as valid. */
-				tmp_filename = camel_data_cache_get_filename (
-					imapx_destination_folder->cache, "tmp", destination_uid);
+				source_file = g_file_new_for_path (source_filename);
+				source_input = g_file_read (source_file, cancellable, &local_error);
+				g_clear_object (&source_file);
 
-				dirname = g_path_get_dirname (tmp_filename);
-				g_mkdir_with_parents (dirname, 0700);
-				g_free (dirname);
-
-				source = g_file_new_for_path (source_filename);
-				tmp_file = g_file_new_for_path (tmp_filename);
-
-				if (source && tmp_file &&
-				    g_file_copy (source, tmp_file, G_FILE_COPY_NONE, cancellable, NULL, NULL, &local_error)) {
-					if (g_rename (tmp_filename, destination_filename) == -1) {
-						gint errsv = errno;
-						g_warning ("%s: Failed to rename '%s' to '%s': %s",
-							G_STRFUNC, tmp_filename, destination_filename, g_strerror (errsv));
-						g_unlink (tmp_filename);
-					}
-				} else if (local_error) {
-					g_warning ("%s: Failed to copy '%s' to '%s': %s",
-						G_STRFUNC, source_filename, destination_filename, local_error->message);
+				if (source_input) {
+					g_output_stream_splice (
+						g_io_stream_get_output_stream (stream),
+						G_INPUT_STREAM (source_input),
+						G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE,
+						cancellable, &local_error);
+					g_clear_object (&source_input);
 				}
 
-				g_clear_object (&source);
-				g_clear_object (&tmp_file);
-				g_free (tmp_filename);
-				g_clear_error (&local_error);
+				if (!local_error) {
+					stream = camel_data_cache_commit_atomic (imapx_destination_folder->cache, g_steal_pointer (&stream), &local_error);
+				} else {
+					camel_data_cache_discard_atomic (imapx_destination_folder->cache, g_steal_pointer (&stream));
+				}
+
+				if (local_error) {
+					g_warning ("%s: Failed to copy '%s' to '%s': %s",
+						G_STRFUNC, source_filename, destination_filename, local_error->message);
+					g_clear_error (&local_error);
+				}
+
+				g_clear_object (&stream);
 			}
 		}
 	}
@@ -4869,6 +4925,10 @@ camel_imapx_server_copy_message_sync (CamelIMAPXServer *is,
 
 		camel_imapx_command_add (ic, " %M", destination);
 		ic->copy_move_folder = folder;
+
+		ic->copy_move_summary = camel_folder_summary_dup_uids (camel_folder_get_folder_summary (folder));
+		if (ic->copy_move_summary)
+			camel_folder_sort_uids (folder, ic->copy_move_summary);
 
 		imapx_free_status (is->priv->copyuid_status);
 		is->priv->copyuid_status = NULL;
@@ -5105,7 +5165,7 @@ camel_imapx_server_append_message_sync (CamelIMAPXServer *is,
 
 	/* chen cleanup this later */
 	uid = imapx_get_temp_uid ();
-	base_stream = camel_data_cache_add (message_cache, "new", uid, error);
+	base_stream = camel_data_cache_add_atomic (message_cache, "new", uid, error);
 	if (base_stream == NULL) {
 		g_prefix_error (error, _("Cannot create spool file: "));
 		g_free (uid);
@@ -5123,16 +5183,23 @@ camel_imapx_server_append_message_sync (CamelIMAPXServer *is,
 		CAMEL_DATA_WRAPPER (message),
 		filter_stream, cancellable, error);
 
-	g_object_unref (base_stream);
 	g_object_unref (filter_stream);
 	g_object_unref (filter);
 
 	if (res == -1) {
 		g_prefix_error (error, _("Cannot create spool file: "));
-		camel_data_cache_remove (message_cache, "new", uid, NULL);
+		camel_data_cache_discard_atomic (message_cache, g_steal_pointer (&base_stream));
 		g_free (uid);
 		return FALSE;
 	}
+
+	base_stream = camel_data_cache_commit_atomic (message_cache, g_steal_pointer (&base_stream), error);
+	if (base_stream == NULL) {
+		g_prefix_error (error, _("Cannot create spool file: "));
+		g_free (uid);
+		return FALSE;
+	}
+	g_clear_object (&base_stream);
 
 	date_time = camel_mime_message_get_date (message, NULL);
 	path = camel_data_cache_get_filename (message_cache, "new", uid);
@@ -5447,6 +5514,7 @@ imapx_server_fetch_changes (CamelIMAPXServer *is,
 			    GHashTable *known_uids,
 			    guint64 from_uidl,
 			    guint64 to_uidl,
+			    guint64 changedsince,
 			    GCancellable *cancellable,
 			    GError **error)
 {
@@ -5464,9 +5532,17 @@ imapx_server_fetch_changes (CamelIMAPXServer *is,
 		from_uidl = 1;
 
 	if (to_uidl > 0) {
-		ic = camel_imapx_command_new (is, CAMEL_IMAPX_JOB_REFRESH_INFO, "UID FETCH %lld:%lld (UID FLAGS)", from_uidl, to_uidl);
+		if (changedsince > 0) {
+			ic = camel_imapx_command_new (is, CAMEL_IMAPX_JOB_REFRESH_INFO, "UID FETCH %lld:%lld (UID FLAGS) (CHANGEDSINCE %lld VANISHED)", from_uidl, to_uidl, changedsince);
+		} else {
+			ic = camel_imapx_command_new (is, CAMEL_IMAPX_JOB_REFRESH_INFO, "UID FETCH %lld:%lld (UID FLAGS)", from_uidl, to_uidl);
+		}
 	} else {
-		ic = camel_imapx_command_new (is, CAMEL_IMAPX_JOB_REFRESH_INFO, "UID FETCH %lld:* (UID FLAGS)", from_uidl);
+		if (changedsince > 0) {
+			ic = camel_imapx_command_new (is, CAMEL_IMAPX_JOB_REFRESH_INFO, "UID FETCH %lld:* (UID FLAGS) (CHANGEDSINCE %lld VANISHED)", from_uidl, changedsince);
+		} else {
+			ic = camel_imapx_command_new (is, CAMEL_IMAPX_JOB_REFRESH_INFO, "UID FETCH %lld:* (UID FLAGS)", from_uidl);
+		}
 	}
 
 	g_return_val_if_fail (is->priv->fetch_changes_mailbox == NULL, FALSE);
@@ -5724,6 +5800,7 @@ camel_imapx_server_refresh_info_sync (CamelIMAPXServer *is,
 	guint64 highestmodseq;
 	guint32 total;
 	guint64 uidl;
+	guint64 changedsince_modseq = 0;
 	gboolean need_rescan, do_old_flags_update;
 	gboolean uidvalidity_changed;
 	gboolean success;
@@ -5799,7 +5876,7 @@ camel_imapx_server_refresh_info_sync (CamelIMAPXServer *is,
 		    imapx_summary->modseq != highestmodseq) {
 			c (
 				is->priv->tagprefix,
-				"Eep, after QRESYNC we're out of sync. "
+				"After QRESYNC folder changed, doing incremental CHANGEDSINCE resync. "
 				"total %u / %u, unread %u / %u, modseq %"
 				G_GUINT64_FORMAT " / %" G_GUINT64_FORMAT " in folder:'%s'\n",
 				total, messages,
@@ -5809,8 +5886,7 @@ camel_imapx_server_refresh_info_sync (CamelIMAPXServer *is,
 				highestmodseq,
 				camel_folder_get_full_name (folder));
 
-			/* To make sure whole folder content is re-checked when the cache is out of sync */
-			total = 0;
+			changedsince_modseq = imapx_summary->modseq;
 		} else {
 			imapx_summary->uidnext = uidnext;
 
@@ -5851,7 +5927,11 @@ camel_imapx_server_refresh_info_sync (CamelIMAPXServer *is,
 
 	known_uids = g_hash_table_new_full (g_str_hash, g_str_equal, (GDestroyNotify) camel_pstring_free, NULL);
 
-	do_old_flags_update = camel_imapx_server_do_old_flags_update (folder);
+	/* bypass the single-client-mode throttle on a message/unread count mismatch */
+	do_old_flags_update = !changedsince_modseq &&
+		(total != messages ||
+		camel_folder_summary_get_unread_count (CAMEL_FOLDER_SUMMARY (imapx_summary)) != unseen ||
+		camel_imapx_server_do_old_flags_update (folder));
 
 	if (do_old_flags_update) {
 		/* Remember summary state before running the update, in case there are
@@ -5861,9 +5941,15 @@ camel_imapx_server_refresh_info_sync (CamelIMAPXServer *is,
 		summary_uids = camel_folder_summary_dup_uids (CAMEL_FOLDER_SUMMARY (imapx_summary));
 	}
 
-	success = imapx_server_fetch_changes (is, mailbox, folder, known_uids, uidl, 0, cancellable, error);
-	if (success && uidl != 1 && do_old_flags_update)
-		success = imapx_server_fetch_changes (is, mailbox, folder, known_uids, 0, uidl, cancellable, error);
+	if (changedsince_modseq) {
+		/* Use the whole 1:* range on purpose, to receive VANISHED responses for
+		   the whole mailbox, not only for the not-yet-locally-known messages. */
+		success = imapx_server_fetch_changes (is, mailbox, folder, known_uids, 1, 0, changedsince_modseq, cancellable, error);
+	} else {
+		success = imapx_server_fetch_changes (is, mailbox, folder, known_uids, uidl, 0, 0, cancellable, error);
+		if (success && uidl != 1 && do_old_flags_update)
+			success = imapx_server_fetch_changes (is, mailbox, folder, known_uids, 0, uidl, 0, cancellable, error);
+	}
 
 	if (success) {
 		imapx_summary->modseq = highestmodseq;
@@ -6016,6 +6102,7 @@ camel_imapx_server_check_folder_path (CamelIMAPXServer *is,
 		*out_same_as_other_folder = folder_name != NULL && g_ascii_strcasecmp (folder_name, path) == 0;
 	}
 
+	g_clear_pointer (&si, camel_store_info_unref);
 	g_object_unref (imapx_store);
 }
 
@@ -6033,8 +6120,9 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 	CamelFolderChangeInfo *expunged_changes = NULL;
 	GPtrArray *expunged_removed_array = NULL;
 	GHashTable *stamps;
+	GHashTable *deleted_stored_uids = NULL;
 	guint32 permanentflags;
-	struct _uidset_state uidset, uidset_expunge;
+	struct _uidset_state uidset;
 	gint unread_change = 0;
 	gboolean use_real_junk_path = FALSE;
 	gboolean use_real_trash_path = FALSE;
@@ -6174,6 +6262,10 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 			if (move_to_not_junk)
 				camel_imapx_folder_add_move_to_not_junk (
 					CAMEL_IMAPX_FOLDER (folder), uid);
+
+			if (!move_to_real_junk && !move_to_real_trash && !move_to_not_junk)
+				camel_imapx_folder_remove_move_uid (
+					CAMEL_IMAPX_FOLDER (folder), uid);
 		}
 
 		if (flags != sflags) {
@@ -6280,8 +6372,6 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 		return FALSE;
 	}
 
-	imapx_uidset_init (&uidset_expunge, 0, MAX_UIDSET_ITEMS);
-
 	has_uidplus_capability = CAMEL_IMAPX_HAVE_CAPABILITY (is->priv->cinfo, UIDPLUS);
 	expunge_deleted = is_real_trash_folder && !remove_deleted_flags;
 
@@ -6295,7 +6385,7 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 
 		for (jj = 0; jj < G_N_ELEMENTS (flags_table) && success; jj++) {
 			guint32 flag = flags_table[jj].flag;
-			CamelIMAPXCommand *ic = NULL, *ic_expunge = NULL;
+			CamelIMAPXCommand *ic = NULL;
 
 			if ((orset & flag) == 0)
 				continue;
@@ -6308,7 +6398,7 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 				gboolean remove_deleted_flag;
 				guint32 flags;
 				guint32 sflags;
-				gint send, send_expunge = 0;
+				gint send;
 
 				/* the 'stamps' hash table contains only those uid-s,
 				   which were also flagged, not only 'dirty' */
@@ -6336,21 +6426,6 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 					 * message appears normally in the
 					 * real Trash folder when copied. */
 					flags &= ~CAMEL_MESSAGE_DELETED;
-				} else if (expunge_deleted && (flags & CAMEL_MESSAGE_DELETED) != 0) {
-					if (has_uidplus_capability) {
-						if (!ic_expunge)
-							ic_expunge = camel_imapx_command_new (is, CAMEL_IMAPX_JOB_EXPUNGE, "UID EXPUNGE ");
-
-						send_expunge = imapx_uidset_add (&uidset_expunge, ic_expunge, camel_message_info_get_uid (info));
-					}
-
-					if (!expunged_changes)
-						expunged_changes = camel_folder_change_info_new ();
-
-					camel_folder_change_info_remove_uid (expunged_changes, camel_message_info_get_uid (info));
-					if (!expunged_removed_array)
-						expunged_removed_array = g_ptr_array_new_with_free_func ((GDestroyNotify) camel_pstring_free);
-					g_ptr_array_add (expunged_removed_array, (gpointer) camel_pstring_strdup (camel_message_info_get_uid (info)));
 				}
 
 				if ( (on && (((flags ^ sflags) & flags) & flag))
@@ -6359,6 +6434,12 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 						ic = camel_imapx_command_new (is, CAMEL_IMAPX_JOB_SYNC_CHANGES, "UID STORE ");
 					}
 					send = imapx_uidset_add (&uidset, ic, camel_message_info_get_uid (info));
+
+					if (on && flag == CAMEL_MESSAGE_DELETED) {
+						if (!deleted_stored_uids)
+							deleted_stored_uids = g_hash_table_new (g_str_hash, g_str_equal);
+						g_hash_table_add (deleted_stored_uids, (gpointer) camel_message_info_get_uid (info));
+					}
 				}
 				if (send == 1 || (i == changed_uids->len - 1 && ic && imapx_uidset_done (&uidset, ic))) {
 					camel_imapx_command_add (ic, " %tFLAGS.SILENT (%t)", on ? "+" : "-", flags_table[jj].name);
@@ -6371,27 +6452,6 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 					if (!success) {
 						g_clear_object (&info);
 						break;
-					}
-				}
-
-				if (has_uidplus_capability && (
-				    send_expunge == 1 || (i == changed_uids->len - 1 && ic_expunge && imapx_uidset_done (&uidset_expunge, ic_expunge)))) {
-					success = camel_imapx_server_process_command_sync (is, ic_expunge, _("Error expunging message"), cancellable, error);
-
-					camel_imapx_command_unref (ic_expunge);
-					ic_expunge = NULL;
-
-					if (!success) {
-						g_clear_object (&info);
-						break;
-					}
-
-					if (expunged_changes) {
-						camel_folder_summary_remove_uids (camel_folder_get_folder_summary (folder), expunged_removed_array);
-						camel_folder_changed (folder, expunged_changes);
-
-						g_clear_pointer (&expunged_changes, camel_folder_change_info_free);
-						g_clear_pointer (&expunged_removed_array, g_ptr_array_unref);
 					}
 				}
 
@@ -6426,26 +6486,7 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 					break;
 			}
 
-			if (has_uidplus_capability && ic_expunge && imapx_uidset_done (&uidset_expunge, ic_expunge)) {
-				success = camel_imapx_server_process_command_sync (is, ic_expunge, _("Error expunging message"), cancellable, error);
-
-				camel_imapx_command_unref (ic_expunge);
-				ic_expunge = NULL;
-
-				if (!success)
-					break;
-
-				if (expunged_changes) {
-					camel_folder_summary_remove_uids (camel_folder_get_folder_summary (folder), expunged_removed_array);
-					camel_folder_changed (folder, expunged_changes);
-
-					g_clear_pointer (&expunged_changes, camel_folder_change_info_free);
-					g_clear_pointer (&expunged_removed_array, g_ptr_array_unref);
-				}
-			}
-
 			g_warn_if_fail (ic == NULL);
-			g_warn_if_fail (ic_expunge == NULL);
 		}
 
 		if (user_set && (permanentflags & CAMEL_MESSAGE_USER) != 0 && success) {
@@ -6514,6 +6555,87 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 		}
 	}
 
+	if (success && expunge_deleted) {
+		struct _uidset_state uidset_expunge;
+		CamelIMAPXCommand *ic_expunge = NULL;
+		guint test_delay_ms;
+
+		test_delay_ms = camel_imapx_folder_get_test_expunge_decision_delay_ms (CAMEL_IMAPX_FOLDER (folder));
+		if (test_delay_ms > 0)
+			g_usleep ((gulong) test_delay_ms * 1000);
+
+		imapx_uidset_init (&uidset_expunge, 0, MAX_UIDSET_ITEMS);
+
+		for (i = 0; i < changed_uids->len && success; i++) {
+			CamelMessageInfo *info;
+			CamelIMAPXMessageInfo *xinfo;
+			guint32 flags;
+			guint32 sflags;
+			gboolean deleted_confirmed;
+			const gchar *uid;
+			gint send_expunge = 0;
+
+			uid = g_ptr_array_index (changed_uids, i);
+
+			if (!g_hash_table_contains (stamps, uid))
+				continue;
+
+			info = camel_folder_summary_get (camel_folder_get_folder_summary (folder), uid);
+			xinfo = info ? CAMEL_IMAPX_MESSAGE_INFO (info) : NULL;
+			if (!info || !xinfo) {
+				g_clear_object (&info);
+				continue;
+			}
+
+			flags = (camel_message_info_get_flags (info) & CAMEL_IMAPX_SERVER_FLAGS) & permanentflags;
+			sflags = (camel_imapx_message_info_get_server_flags (xinfo) & CAMEL_IMAPX_SERVER_FLAGS) & permanentflags;
+
+			deleted_confirmed =
+				(sflags & CAMEL_MESSAGE_DELETED) != 0 ||
+				(deleted_stored_uids && g_hash_table_contains (deleted_stored_uids, uid));
+
+			if ((flags & CAMEL_MESSAGE_DELETED) != 0 && deleted_confirmed) {
+				if (has_uidplus_capability) {
+					if (!ic_expunge)
+						ic_expunge = camel_imapx_command_new (is, CAMEL_IMAPX_JOB_EXPUNGE, "UID EXPUNGE ");
+
+					send_expunge = imapx_uidset_add (&uidset_expunge, ic_expunge, uid);
+				}
+
+				if (!expunged_changes)
+					expunged_changes = camel_folder_change_info_new ();
+
+				camel_folder_change_info_remove_uid (expunged_changes, uid);
+				if (!expunged_removed_array)
+					expunged_removed_array = g_ptr_array_new_with_free_func ((GDestroyNotify) camel_pstring_free);
+				g_ptr_array_add (expunged_removed_array, (gpointer) camel_pstring_strdup (uid));
+			}
+
+			g_clear_object (&info);
+
+			if (has_uidplus_capability && (send_expunge == 1 ||
+			    (i == changed_uids->len - 1 && ic_expunge && imapx_uidset_done (&uidset_expunge, ic_expunge)))) {
+				success = camel_imapx_server_process_command_sync (is, ic_expunge, _("Error expunging message"), cancellable, error);
+
+				camel_imapx_command_unref (ic_expunge);
+				ic_expunge = NULL;
+
+				if (!success)
+					break;
+
+				if (expunged_changes) {
+					camel_folder_summary_remove_uids (camel_folder_get_folder_summary (folder), expunged_removed_array);
+					camel_folder_changed (folder, expunged_changes);
+
+					g_clear_pointer (&expunged_changes, camel_folder_change_info_free);
+					g_clear_pointer (&expunged_removed_array, g_ptr_array_unref);
+				}
+			}
+		}
+
+		g_warn_if_fail (ic_expunge == NULL);
+	}
+
 	if (success && expunged_changes && expunge_deleted && !has_uidplus_capability) {
 		CamelIMAPXCommand *ic;
 
@@ -6570,6 +6692,14 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 
 			has_flags = camel_message_info_get_flags (info);
 			set_server_flags = has_flags & CAMEL_IMAPX_SERVER_FLAGS;
+
+			if ((set_server_flags & CAMEL_MESSAGE_DELETED) != 0 &&
+			    (camel_imapx_message_info_get_server_flags (xinfo) & CAMEL_MESSAGE_DELETED) == 0 &&
+			    !(deleted_stored_uids && g_hash_table_contains (deleted_stored_uids, uid))) {
+				set_server_flags &= ~CAMEL_MESSAGE_DELETED;
+				changed_meanwhile = TRUE;
+			}
+
 			if (!remove_deleted_flags ||
 			    !(has_flags & CAMEL_MESSAGE_DELETED)) {
 				set_folder_flagged = FALSE;
@@ -6628,6 +6758,7 @@ camel_imapx_server_sync_changes_sync (CamelIMAPXServer *is,
 	imapx_sync_free_user (off_user);
 	g_clear_pointer (&changed_uids, g_ptr_array_unref);
 	g_hash_table_destroy (stamps);
+	g_clear_pointer (&deleted_stored_uids, g_hash_table_unref);
 	g_object_unref (folder);
 
 	return success;
@@ -6652,46 +6783,43 @@ camel_imapx_server_expunge_sync (CamelIMAPXServer *is,
 
 	if (success) {
 		CamelIMAPXCommand *ic;
+		GPtrArray *uids;
+		CamelStore *parent_store;
+		CamelFolderSummary *folder_summary;
+		const gchar *full_name;
+
+		full_name = camel_folder_get_full_name (folder);
+		parent_store = camel_folder_get_parent_store (folder);
+		folder_summary = camel_folder_get_folder_summary (folder);
+
+		camel_folder_summary_lock (folder_summary);
+		camel_folder_summary_save (folder_summary, NULL);
+		uids = camel_store_db_dup_deleted_uids (camel_store_get_db (parent_store), full_name, NULL);
+		camel_folder_summary_unlock (folder_summary);
 
 		ic = camel_imapx_command_new (is, CAMEL_IMAPX_JOB_EXPUNGE, "EXPUNGE");
 
 		success = camel_imapx_server_process_command_sync (is, ic, _("Error expunging message"), cancellable, error);
-		if (success) {
-			GPtrArray *uids;
-			CamelStore *parent_store;
-			CamelFolderSummary *folder_summary;
-			const gchar *full_name;
+		if (success && uids && uids->len) {
+			CamelFolderChangeInfo *changes;
+			gint i;
 
-			full_name = camel_folder_get_full_name (folder);
-			parent_store = camel_folder_get_parent_store (folder);
-			folder_summary = camel_folder_get_folder_summary (folder);
-
-			camel_folder_summary_lock (folder_summary);
-
-			camel_folder_summary_save (folder_summary, NULL);
-			uids = camel_store_db_dup_deleted_uids (camel_store_get_db (parent_store), full_name, NULL);
-
-			if (uids && uids->len) {
-				CamelFolderChangeInfo *changes;
-				gint i;
-
-				changes = camel_folder_change_info_new ();
-				for (i = 0; i < uids->len; i++) {
-					camel_folder_change_info_remove_uid (changes, uids->pdata[i]);
-				}
-
-				camel_folder_summary_remove_uids (folder_summary, uids);
-				camel_folder_summary_save (folder_summary, NULL);
-				imapx_update_store_summary (folder);
-				camel_folder_changed (folder, changes);
-				camel_folder_change_info_free (changes);
+			changes = camel_folder_change_info_new ();
+			for (i = 0; i < uids->len; i++) {
+				camel_folder_change_info_remove_uid (changes, uids->pdata[i]);
 			}
 
-			if (uids)
-				g_ptr_array_free (uids, TRUE);
-
+			camel_folder_summary_lock (folder_summary);
+			camel_folder_summary_remove_uids (folder_summary, uids);
+			camel_folder_summary_save (folder_summary, NULL);
 			camel_folder_summary_unlock (folder_summary);
+
+			imapx_update_store_summary (folder);
+			camel_folder_changed (folder, changes);
+			camel_folder_change_info_free (changes);
 		}
+
+		g_clear_pointer (&uids, g_ptr_array_unref);
 
 		camel_imapx_command_unref (ic);
 	}
@@ -7115,6 +7243,114 @@ camel_imapx_server_uid_search_sync (CamelIMAPXServer *is,
 
 	if (uid_search_results)
 		g_array_unref (uid_search_results);
+
+	return results;
+}
+
+GHashTable *
+camel_imapx_server_multimailbox_search_sync (CamelIMAPXServer *is,
+                                             GPtrArray *mailboxes, /* CamelIMAPXMailbox * */
+                                             const gchar *search_key,
+                                             const gchar * const *words,
+                                             GCancellable *cancellable,
+                                             GError **error)
+{
+	CamelIMAPXCommand *ic;
+	GHashTable *esearch_results = NULL;
+	GHashTable *results = NULL;
+	guint ii;
+	gboolean need_charset = FALSE;
+	gboolean success;
+
+	g_return_val_if_fail (CAMEL_IS_IMAPX_SERVER (is), NULL);
+	g_return_val_if_fail (mailboxes != NULL, NULL);
+
+	if (CAMEL_IMAPX_LACK_CAPABILITY (is->priv->cinfo, MULTISEARCH)) {
+		g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+			"IMAP server does not support multimailbox search");
+		return NULL;
+	}
+
+	if (!camel_imapx_server_get_utf8_accept (is)) {
+		for (ii = 0; !need_charset && words && words[ii]; ii++) {
+			need_charset = !imapx_util_all_is_ascii (words[ii]);
+		}
+	}
+
+	ic = camel_imapx_command_new (is, CAMEL_IMAPX_JOB_ESEARCH, "ESEARCH IN (mailboxes (");
+	for (ii = 0; ii < mailboxes->len; ii++) {
+		CamelIMAPXMailbox *mailbox = g_ptr_array_index (mailboxes, ii);
+		const gchar *name = camel_imapx_mailbox_get_name (mailbox);
+		gchar *utf7_name = NULL;
+
+		if (!camel_imapx_server_get_utf8_accept (is)) {
+			utf7_name = camel_utf8_utf7 (name);
+			name = utf7_name;
+		}
+
+		if (ii > 0)
+			camel_imapx_command_add (ic, " ");
+		camel_imapx_command_add (ic, "%S", name);
+		g_free (utf7_name);
+	}
+	camel_imapx_command_add (ic, "))");
+
+	if (need_charset)
+		camel_imapx_command_add (ic, " CHARSET UTF-8");
+
+	if (search_key && words) {
+		camel_imapx_command_add (ic, " (");
+		for (ii = 0; words[ii]; ii++) {
+			if (ii > 0)
+				camel_imapx_command_add (ic, " ");
+			camel_imapx_command_add (ic, "%t %s", search_key, words[ii]);
+		}
+		camel_imapx_command_add (ic, ")");
+	}
+
+	success = camel_imapx_server_process_command_sync (is, ic, _("Search failed"), cancellable, error);
+
+	camel_imapx_command_unref (ic);
+
+	g_mutex_lock (&is->priv->esearch_results_lock);
+	esearch_results = g_steal_pointer (&is->priv->esearch_results);
+	g_mutex_unlock (&is->priv->esearch_results_lock);
+
+	if (success) {
+		results = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) g_ptr_array_unref);
+
+		/* Fill in empty arrays for searched mailboxes so they are cached as searched */
+		for (ii = 0; ii < mailboxes->len; ii++) {
+			CamelIMAPXMailbox *mailbox = g_ptr_array_index (mailboxes, ii);
+			const gchar *mbox_name = camel_imapx_mailbox_get_name (mailbox);
+			g_hash_table_insert (results, g_strdup (mbox_name), g_ptr_array_new_with_free_func ((GDestroyNotify) camel_pstring_free));
+		}
+
+		if (esearch_results != NULL) {
+			GHashTableIter iter;
+			gpointer key, value;
+
+			g_hash_table_iter_init (&iter, esearch_results);
+			while (g_hash_table_iter_next (&iter, &key, &value)) {
+				const gchar *mbox_name = key;
+				GArray *uid_search_results = value;
+				GPtrArray *uids = g_hash_table_lookup (results, mbox_name);
+
+				if (uids == NULL)
+					continue;
+
+				for (ii = 0; ii < uid_search_results->len; ii++) {
+					guint32 numeric_uid = g_array_index (uid_search_results, guint32, ii);
+					gchar uid_str[64];
+
+					g_warn_if_fail (g_snprintf (uid_str, sizeof (uid_str), "%" G_GUINT32_FORMAT, numeric_uid) < sizeof (uid_str));
+					g_ptr_array_add (uids, (gpointer) camel_pstring_strdup (uid_str));
+				}
+			}
+		}
+	}
+
+	g_clear_pointer (&esearch_results, g_hash_table_unref);
 
 	return results;
 }

@@ -1,16 +1,5 @@
 /*
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include <stdlib.h>
@@ -66,6 +55,7 @@ test_cursor_sexp_calculate_position (EbSqlCursorFixture *fixture,
 	if (!e_book_sqlite_cursor_set_sexp (((EbSqlFixture *) fixture)->ebsql,
 					    fixture->cursor, sexp, &error))
 		g_error ("Failed to set sexp: %s", error->message);
+	g_free (sexp);
 
 	/* Check new position after modified sexp */
 	if (!e_book_sqlite_cursor_calculate (((EbSqlFixture *) fixture)->ebsql,
@@ -95,6 +85,7 @@ test_cursor_sexp_and_step (EbSqlCursorFixture *fixture,
 	if (!e_book_sqlite_cursor_set_sexp (((EbSqlFixture *) fixture)->ebsql,
 					    fixture->cursor, sexp, &error))
 		g_error ("Failed to set sexp: %s", error->message);
+	g_free (sexp);
 
 	/* Step 6 results from the beginning of the filtered list, gets up to contact 'sorted-8' */
 	if (!e_book_sqlite_cursor_step (((EbSqlFixture *) fixture)->ebsql,
@@ -134,9 +125,6 @@ gint
 main (gint argc,
       gchar **argv)
 {
-#if !GLIB_CHECK_VERSION (2, 35, 1)
-	g_type_init ();
-#endif
 	g_test_init (&argc, &argv, NULL);
 	g_test_bug_base ("https://gitlab.gnome.org/GNOME/evolution-data-server/");
 

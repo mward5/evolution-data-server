@@ -1,21 +1,8 @@
-/* camel-stream-process.c : stream over piped process
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: David Woodhouse <dwmw2@infradead.org>
- *          Jeffrey Stedfast <fejj@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: David Woodhouse <dwmw2@infradead.org>
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -247,7 +234,8 @@ camel_stream_process_connect (CamelStreamProcess *stream,
                               const gchar **env,
                               GError **error)
 {
-	gint sockfds[2];
+	gint sockfds[2] = { -1, -1};
+	gint err_no;
 
 	g_return_val_if_fail (CAMEL_IS_STREAM_PROCESS (stream), -1);
 	g_return_val_if_fail (command != NULL, -1);
@@ -262,9 +250,6 @@ camel_stream_process_connect (CamelStreamProcess *stream,
 	if (!stream->priv->childpid) {
 		do_exec_command (sockfds[1], command, (gchar **) env);
 	} else if (stream->priv->childpid == -1) {
-		close (sockfds[0]);
-		close (sockfds[1]);
-		stream->priv->sockfd = -1;
 		goto fail;
 	}
 
@@ -274,7 +259,8 @@ camel_stream_process_connect (CamelStreamProcess *stream,
 	return 0;
 
 fail:
-	if (errno == EINTR)
+	err_no = errno;
+	if (err_no == EINTR)
 		g_set_error (
 			error, G_IO_ERROR,
 			G_IO_ERROR_CANCELLED,
@@ -282,9 +268,14 @@ fail:
 	else
 		g_set_error (
 			error, G_IO_ERROR,
-			g_io_error_from_errno (errno),
+			g_io_error_from_errno (err_no),
 			_("Could not connect with command “%s”: %s"),
-			command, g_strerror (errno));
+			command, g_strerror (err_no));
+	stream->priv->sockfd = -1;
+	if (sockfds[0] >= 0)
+		close (sockfds[0]);
+	if (sockfds[1] >= 0)
+		close (sockfds[1]);
 
 	return -1;
 }

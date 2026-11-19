@@ -1,20 +1,7 @@
-/* camel-imap-folder.c : class for a imap folder
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -45,6 +32,9 @@ struct _CamelIMAPXFolderPrivate {
 
 	gboolean check_folder;
 	gint64 last_full_update;
+
+	guint test_move_to_trash_delay_ms;
+	guint test_expunge_decision_delay_ms;
 };
 
 enum {
@@ -53,6 +43,8 @@ enum {
 	PROP_APPLY_FILTERS,
 	PROP_CHECK_FOLDER,
 	PROP_LAST_FULL_UPDATE,
+	PROP_TEST_MOVE_TO_TRASH_DELAY_MS,
+	PROP_TEST_EXPUNGE_DECISION_DELAY_MS,
 	N_PROPS
 };
 
@@ -173,6 +165,18 @@ imapx_folder_set_property (GObject *object,
 				CAMEL_IMAPX_FOLDER (object),
 				g_value_get_object (value));
 			return;
+
+		case PROP_TEST_MOVE_TO_TRASH_DELAY_MS:
+			camel_imapx_folder_set_test_move_to_trash_delay_ms (
+				CAMEL_IMAPX_FOLDER (object),
+				g_value_get_uint (value));
+			return;
+
+		case PROP_TEST_EXPUNGE_DECISION_DELAY_MS:
+			camel_imapx_folder_set_test_expunge_decision_delay_ms (
+				CAMEL_IMAPX_FOLDER (object),
+				g_value_get_uint (value));
+			return;
 	}
 
 	G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -212,9 +216,39 @@ imapx_folder_get_property (GObject *object,
 				camel_imapx_folder_ref_mailbox (
 				CAMEL_IMAPX_FOLDER (object)));
 			return;
+
+		case PROP_TEST_MOVE_TO_TRASH_DELAY_MS:
+			g_value_set_uint (
+				value,
+				camel_imapx_folder_get_test_move_to_trash_delay_ms (
+				CAMEL_IMAPX_FOLDER (object)));
+			return;
+
+		case PROP_TEST_EXPUNGE_DECISION_DELAY_MS:
+			g_value_set_uint (
+				value,
+				camel_imapx_folder_get_test_expunge_decision_delay_ms (
+				CAMEL_IMAPX_FOLDER (object)));
+			return;
 	}
 
 	G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
+}
+
+static void
+imapx_folder_delete (CamelFolder *folder)
+{
+	CamelStore *store;
+
+	store = camel_folder_get_parent_store (folder);
+	if (store != NULL) {
+		camel_store_summary_disconnect_folder_summary (
+			CAMEL_IMAPX_STORE (store)->summary,
+			camel_folder_get_folder_summary (folder));
+	}
+
+	/* Chain up to parent's delete_() method. */
+	CAMEL_FOLDER_CLASS (camel_imapx_folder_parent_class)->delete_ (folder);
 }
 
 static void
@@ -1142,6 +1176,7 @@ camel_imapx_folder_class_init (CamelIMAPXFolderClass *class)
 	object_class->finalize = imapx_folder_finalize;
 
 	folder_class = CAMEL_FOLDER_CLASS (class);
+	folder_class->delete_ = imapx_folder_delete;
 	folder_class->get_permanent_flags = imapx_get_permanent_flags;
 	folder_class->rename = imapx_rename;
 	folder_class->dup_uncached_uids = imapx_dup_uncached_uids;
@@ -1203,6 +1238,20 @@ camel_imapx_folder_class_init (CamelIMAPXFolderClass *class)
 			G_PARAM_EXPLICIT_NOTIFY |
 			G_PARAM_STATIC_STRINGS |
 			CAMEL_FOLDER_PARAM_PERSISTENT);
+
+	properties[PROP_TEST_MOVE_TO_TRASH_DELAY_MS] =
+		g_param_spec_uint (
+			"test-move-to-trash-delay-ms", NULL, NULL,
+			0, G_MAXUINT, 0,
+			G_PARAM_READWRITE |
+			G_PARAM_STATIC_STRINGS);
+
+	properties[PROP_TEST_EXPUNGE_DECISION_DELAY_MS] =
+		g_param_spec_uint (
+			"test-expunge-decision-delay-ms", NULL, NULL,
+			0, G_MAXUINT, 0,
+			G_PARAM_READWRITE |
+			G_PARAM_STATIC_STRINGS);
 
 	/**
 	 * CamelIMAPXFolder:mailbox
@@ -1274,6 +1323,8 @@ camel_imapx_folder_new (CamelStore *store,
 	CamelIMAPXFolder *imapx_folder;
 	const gchar *short_name;
 	gchar *state_file;
+	gchar *real_junk_path = NULL;
+	gchar *real_trash_path = NULL;
 	gboolean filter_all;
 	gboolean filter_inbox;
 	gboolean filter_junk;
@@ -1301,6 +1352,11 @@ camel_imapx_folder_new (CamelStore *store,
 		"limit-value", &offline_limit_value,
 		NULL);
 
+	if (camel_imapx_settings_get_use_real_junk_path (CAMEL_IMAPX_SETTINGS (settings)))
+		real_junk_path = camel_imapx_settings_dup_real_junk_path (CAMEL_IMAPX_SETTINGS (settings));
+	if (camel_imapx_settings_get_use_real_trash_path (CAMEL_IMAPX_SETTINGS (settings)))
+		real_trash_path = camel_imapx_settings_dup_real_trash_path (CAMEL_IMAPX_SETTINGS (settings));
+
 	g_object_unref (settings);
 
 	short_name = strrchr (folder_name, '/');
@@ -1314,6 +1370,34 @@ camel_imapx_folder_new (CamelStore *store,
 		"display-name", short_name,
 		"full_name", folder_name,
 		"parent-store", store, NULL);
+
+	if (real_junk_path != NULL && g_ascii_strcasecmp (real_junk_path, folder_name) == 0)
+		add_folder_flags |= CAMEL_FOLDER_IS_JUNK;
+
+	if (real_trash_path != NULL && g_ascii_strcasecmp (real_trash_path, folder_name) == 0)
+		add_folder_flags |= CAMEL_FOLDER_IS_TRASH;
+
+	if (filter_all)
+		add_folder_flags |= CAMEL_FOLDER_FILTER_RECENT;
+
+	if (camel_imapx_mailbox_is_inbox (folder_name)) {
+		if (filter_inbox)
+			add_folder_flags |= CAMEL_FOLDER_FILTER_RECENT;
+
+		if (filter_junk)
+			add_folder_flags |= CAMEL_FOLDER_FILTER_JUNK;
+	} else {
+		if (filter_junk && !filter_junk_inbox)
+			add_folder_flags |= CAMEL_FOLDER_FILTER_JUNK;
+
+		if (imapx_folder_get_apply_filters (CAMEL_IMAPX_FOLDER (folder)))
+			add_folder_flags |= CAMEL_FOLDER_FILTER_RECENT;
+	}
+
+	camel_folder_set_flags (folder, camel_folder_get_flags (folder) | add_folder_flags);
+
+	g_clear_pointer (&real_junk_path, g_free);
+	g_clear_pointer (&real_trash_path, g_free);
 
 	folder_summary = camel_imapx_summary_new (folder);
 	if (!folder_summary) {
@@ -1352,25 +1436,6 @@ camel_imapx_folder_new (CamelStore *store,
 	camel_binding_bind_property (store, "online",
 		imapx_folder->cache, "expire-enabled",
 		G_BINDING_SYNC_CREATE);
-
-	if (filter_all)
-		add_folder_flags |= CAMEL_FOLDER_FILTER_RECENT;
-
-	if (camel_imapx_mailbox_is_inbox (folder_name)) {
-		if (filter_inbox)
-			add_folder_flags |= CAMEL_FOLDER_FILTER_RECENT;
-
-		if (filter_junk)
-			add_folder_flags |= CAMEL_FOLDER_FILTER_JUNK;
-	} else {
-		if (filter_junk && !filter_junk_inbox)
-			add_folder_flags |= CAMEL_FOLDER_FILTER_JUNK;
-
-		if (imapx_folder_get_apply_filters (imapx_folder))
-			add_folder_flags |= CAMEL_FOLDER_FILTER_RECENT;
-	}
-
-	camel_folder_set_flags (folder, camel_folder_get_flags (folder) | add_folder_flags);
 
 	camel_store_summary_connect_folder_summary (
 		CAMEL_IMAPX_STORE (store)->summary,
@@ -1676,6 +1741,56 @@ camel_imapx_folder_add_move_to_not_junk (CamelIMAPXFolder *folder,
 		(gpointer) camel_pstring_strdup (message_uid));
 
 	g_mutex_unlock (&folder->priv->move_to_hash_table_lock);
+}
+
+void
+camel_imapx_folder_remove_move_uid (CamelIMAPXFolder *folder,
+                                    const gchar *message_uid)
+{
+	g_return_if_fail (CAMEL_IS_IMAPX_FOLDER (folder));
+	g_return_if_fail (message_uid != NULL);
+
+	g_mutex_lock (&folder->priv->move_to_hash_table_lock);
+
+	g_hash_table_remove (folder->priv->move_to_real_trash_uids, message_uid);
+	g_hash_table_remove (folder->priv->move_to_real_junk_uids, message_uid);
+	g_hash_table_remove (folder->priv->move_to_not_junk_uids, message_uid);
+
+	g_mutex_unlock (&folder->priv->move_to_hash_table_lock);
+}
+
+guint
+camel_imapx_folder_get_test_move_to_trash_delay_ms (CamelIMAPXFolder *folder)
+{
+	g_return_val_if_fail (CAMEL_IS_IMAPX_FOLDER (folder), 0);
+
+	return folder->priv->test_move_to_trash_delay_ms;
+}
+
+void
+camel_imapx_folder_set_test_move_to_trash_delay_ms (CamelIMAPXFolder *folder,
+                                                     guint delay_ms)
+{
+	g_return_if_fail (CAMEL_IS_IMAPX_FOLDER (folder));
+
+	folder->priv->test_move_to_trash_delay_ms = delay_ms;
+}
+
+guint
+camel_imapx_folder_get_test_expunge_decision_delay_ms (CamelIMAPXFolder *folder)
+{
+	g_return_val_if_fail (CAMEL_IS_IMAPX_FOLDER (folder), 0);
+
+	return folder->priv->test_expunge_decision_delay_ms;
+}
+
+void
+camel_imapx_folder_set_test_expunge_decision_delay_ms (CamelIMAPXFolder *folder,
+                                                        guint delay_ms)
+{
+	g_return_if_fail (CAMEL_IS_IMAPX_FOLDER (folder));
+
+	folder->priv->test_expunge_decision_delay_ms = delay_ms;
 }
 
 void

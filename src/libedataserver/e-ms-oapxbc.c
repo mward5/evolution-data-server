@@ -1,6 +1,6 @@
 /*
  * SPDX-FileCopyrightText: (C) 2024 Siemens AG
- * SPDX-License-Identifier: LGPL-2.1-or-later
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 /**
@@ -146,6 +146,7 @@ e_ms_oapxbc_new_sync (const gchar *client_id,
  **/
 JsonObject *
 e_ms_oapxbc_get_accounts_sync (EMsOapxbc *self,
+			       const gchar *redirect_uri,
 			       GCancellable *cancellable,
 			       GError **error)
 {
@@ -165,7 +166,7 @@ e_ms_oapxbc_get_accounts_sync (EMsOapxbc *self,
 	json_builder_set_member_name (builder, "clientId");
 	json_builder_add_string_value (builder, self->client_id);
 	json_builder_set_member_name (builder, "redirectUri");
-	json_builder_add_string_value (builder, self->client_id);
+	json_builder_add_string_value (builder, redirect_uri);
 	json_builder_end_object (builder);
 	root = json_builder_get_root (builder);
 	g_object_unref (builder);
@@ -211,10 +212,11 @@ e_ms_oapxbc_get_accounts_sync (EMsOapxbc *self,
 }
 
 static gchar *
-prepare_prt_sso_request_data (JsonObject *auth_params,
+prepare_prt_sso_request_data (JsonObject *account,
+			      JsonObject *auth_params,
 			      const gchar *sso_url)
 {
-	JsonNode *params, *auth_params_node, *sso_url_node;
+	JsonNode *params, *account_node, *auth_params_node, *sso_url_node;
 	JsonObject *params_obj;
 	JsonGenerator *gen;
 	gchar *data;
@@ -223,10 +225,13 @@ prepare_prt_sso_request_data (JsonObject *auth_params,
 	params_obj = json_object_new ();
 	json_node_set_object (params, params_obj);
 	json_object_unref (params_obj);
+	account_node = json_node_new (JSON_NODE_OBJECT);
+	json_node_set_object (account_node, account);
 	auth_params_node = json_node_new (JSON_NODE_OBJECT);
 	json_node_set_object (auth_params_node, auth_params);
 	sso_url_node = json_node_new (JSON_NODE_VALUE);
 	json_node_set_string (sso_url_node, sso_url);
+	json_object_set_member (params_obj, "account", account_node);
 	json_object_set_member (params_obj, "authParameters", auth_params_node);
 	json_object_set_member (params_obj, "ssoUrl", sso_url_node);
 
@@ -243,7 +248,8 @@ static JsonObject *
 prepare_prt_auth_params (EMsOapxbc *self,
 			 JsonObject *account,
 			 JsonArray *scopes,
-			 const gchar *redirect_uri)
+			 const gchar *redirect_uri,
+			 const gchar *sso_url)
 {
 	JsonNode *account_node, *scopes_node, *root;
 	JsonObject *auth_params;
@@ -276,6 +282,8 @@ prepare_prt_auth_params (EMsOapxbc *self,
 	json_builder_add_value (builder, scopes_node);
 	json_builder_set_member_name (builder, "username");
 	json_builder_add_string_value (builder, username);
+	json_builder_set_member_name (builder, "ssoUrl");
+	json_builder_add_string_value (builder, sso_url);
 	json_builder_end_object (builder);
 
 	root = json_builder_get_root (builder);
@@ -332,8 +340,8 @@ e_ms_oapxbc_acquire_prt_sso_cookie_sync (EMsOapxbc *self,
 	gboolean success;
 
 	g_return_val_if_fail (E_IS_MS_OAPXBC (self), NULL);
-	auth_params = prepare_prt_auth_params (self, account, scopes, redirect_uri);
-	data = prepare_prt_sso_request_data (auth_params, sso_url);
+	auth_params = prepare_prt_auth_params (self, account, scopes, redirect_uri, sso_url);
+	data = prepare_prt_sso_request_data (account, auth_params, sso_url);
 	json_object_unref (auth_params);
 
 	success = e_dbus_identity_broker1_call_acquire_prt_sso_cookie_sync (
@@ -369,7 +377,7 @@ e_ms_oapxbc_acquire_prt_sso_cookie_sync (EMsOapxbc *self,
 	    json_node_get_value_type (json_object_get_member (json_cookie, "cookieItems")) == JSON_TYPE_ARRAY) {
 		cookie_items = json_object_get_array_member (json_cookie, "cookieItems");
 		if (json_array_get_length (cookie_items) == 0) {
-			g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "No PrtSsoCookie in response");
+			g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, _("No PrtSsoCookie in response"));
 			goto error;
 		}
 		/* unpack first cookie element from array */
@@ -378,14 +386,14 @@ e_ms_oapxbc_acquire_prt_sso_cookie_sync (EMsOapxbc *self,
 
 	if (!json_object_has_member (json_cookie, "cookieName") ||
 	    !json_object_has_member (json_cookie, "cookieContent")) {
-		g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Failed to parse acquirePrtSsoCookie response: invalid PrtSsoCookie data");
+		g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, _("Failed to parse acquirePrtSsoCookie response: invalid PrtSsoCookie data"));
 		goto error;
 	}
 
 	cookie_name = json_object_get_string_member (json_cookie, "cookieName");
 	cookie_content = json_object_get_string_member (json_cookie, "cookieContent");
 	if (!cookie_name || !cookie_content) {
-		g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Failed to parse acquirePrtSsoCookie response: invalid PrtSsoCookie data");
+		g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, _("Failed to parse acquirePrtSsoCookie response: invalid PrtSsoCookie data"));
 		goto error;
 	}
 
@@ -396,7 +404,7 @@ e_ms_oapxbc_acquire_prt_sso_cookie_sync (EMsOapxbc *self,
 		"login.microsoftonline.com",
 		"/", -1);
 	if (!soup_cookie) {
-		g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Failed to create SOAP cookie");
+		g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, _("Failed to create SOAP cookie"));
 		goto error;
 	}
 

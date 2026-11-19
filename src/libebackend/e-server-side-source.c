@@ -1,18 +1,5 @@
 /*
- * e-server-side-source.c
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 /**
@@ -460,10 +447,26 @@ server_side_source_credentials_lookup_cb (GObject *source_object,
 		g_strfreev (arg_credentials);
 	} else if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
 		if (e_source_registry_debug_enabled ()) {
-			printf ("%s: Failed to lookup password for source %s (%s): %s\n", G_STRFUNC,
-				e_source_get_uid (E_SOURCE (data->source)),
-				e_source_get_display_name (E_SOURCE (data->source)),
-				error ? error->message : "Unknown error");
+			ESource *cred_source;
+
+			cred_source = e_source_credentials_provider_ref_credentials_source (
+				E_SOURCE_CREDENTIALS_PROVIDER (source_object), E_SOURCE (data->source));
+
+			if (cred_source && !e_source_equal (cred_source, E_SOURCE (data->source))) {
+				printf ("%s: Failed to lookup password for source %s (%s); credentials are held by %s (%s): %s\n", G_STRFUNC,
+					e_source_get_uid (E_SOURCE (data->source)),
+					e_source_get_display_name (E_SOURCE (data->source)),
+					e_source_get_uid (cred_source),
+					e_source_get_display_name (cred_source),
+					error ? error->message : "Unknown error");
+			} else {
+				printf ("%s: Failed to lookup password for source %s (%s): %s\n", G_STRFUNC,
+					e_source_get_uid (E_SOURCE (data->source)),
+					e_source_get_display_name (E_SOURCE (data->source)),
+					error ? error->message : "Unknown error");
+			}
+
+			g_clear_object (&cred_source);
 			fflush (stdout);
 		}
 

@@ -1,18 +1,5 @@
 /*
- * evolution-source-registry.c
- *
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -20,10 +7,6 @@
 #include <locale.h>
 #include <stdlib.h>
 #include <glib/gi18n.h>
-
-#if defined (ENABLE_MAINTAINER_MODE) && defined (HAVE_GTK)
-#include <gtk/gtk.h>
-#endif
 
 #include <libedataserver/libedataserver.h>
 #include <libebackend/libebackend.h>
@@ -158,13 +141,6 @@ main (gint argc,
 	g_type_ensure (G_TYPE_DBUS_CONNECTION);
 	g_type_ensure (G_TYPE_DBUS_PROXY);
 	g_type_ensure (G_BUS_TYPE_SESSION);
-
-#if defined (ENABLE_MAINTAINER_MODE) && defined (HAVE_GTK)
-	if (g_getenv ("EDS_TESTING") == NULL)
-		/* This is only to load gtk-modules, like
-		 * bug-buddy's gnomesegvhandler, if possible */
-		gtk_init_check (&argc, &argv);
-#endif
 
 	context = g_option_context_new (NULL);
 	g_option_context_add_main_entries (context, entries, GETTEXT_PACKAGE);

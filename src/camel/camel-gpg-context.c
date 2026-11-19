@@ -1,19 +1,7 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Jeffrey Stedfast <fejj@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
  */
 
 /* Debug states:
@@ -101,7 +89,7 @@ static const gchar *gpg_ctx_get_executable_name (void);
 /**
  * CamelGpgKeyInfo:
  *
- * An opaque structure holding information about a user key.
+ * Information about a user GPG key.
  *
  * Since: 3.50
  **/
@@ -1691,7 +1679,7 @@ gpg_ctx_parse_status (struct _GpgCtx *gpg,
 		case GPG_CTX_MODE_SET_KEY_TRUST:
 			if (!strncmp ((const gchar *) status, "GET_LINE ", 9)) {
 				if (!strncmp ((const gchar *) status + 9, "edit_ownertrust.value", 21)) {
-					const gchar *choice = "m";
+					const gchar *choice;
 
 					switch (gpg->set_key_trust_value) {
 					case CAMEL_GPG_TRUST_NONE:
@@ -1711,6 +1699,9 @@ gpg_ctx_parse_status (struct _GpgCtx *gpg,
 						break;
 					case CAMEL_GPG_TRUST_ULTIMATE:
 						choice = "5";
+						break;
+					default:
+						choice = "m";
 						break;
 					}
 

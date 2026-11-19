@@ -1,19 +1,7 @@
 /*
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Michael Zucchi <notzed@ximian.com>
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #if !defined (__CAMEL_H_INSIDE__) && !defined (CAMEL_COMPILATION)
@@ -75,6 +63,8 @@ typedef struct _CamelPartitionKeyBlock CamelPartitionKeyBlock;
 typedef struct _CamelPartitionMap CamelPartitionMap;
 typedef struct _CamelPartitionMapBlock CamelPartitionMapBlock;
 
+typedef struct _CamelKeyTable CamelKeyTable;
+
 typedef struct _CamelPartitionTable CamelPartitionTable;
 typedef struct _CamelPartitionTableClass CamelPartitionTableClass;
 typedef struct _CamelPartitionTablePrivate CamelPartitionTablePrivate;
@@ -116,6 +106,9 @@ GType		camel_partition_table_get_type	(void);
 CamelPartitionTable *
 		camel_partition_table_new	(CamelBlockFile *bs,
 						 camel_block_t root);
+void		camel_partition_table_set_key_table
+						(CamelPartitionTable *cpi,
+						 CamelKeyTable *key_table);
 gint		camel_partition_table_sync	(CamelPartitionTable *cpi);
 gint		camel_partition_table_add	(CamelPartitionTable *cpi,
 						 const gchar *key,
@@ -132,7 +125,6 @@ gboolean	camel_partition_table_remove	(CamelPartitionTable *cpi,
 typedef struct _CamelKeyBlock CamelKeyBlock;
 typedef struct _CamelKeyRootBlock CamelKeyRootBlock;
 
-typedef struct _CamelKeyTable CamelKeyTable;
 typedef struct _CamelKeyTableClass CamelKeyTableClass;
 typedef struct _CamelKeyTablePrivate CamelKeyTablePrivate;
 

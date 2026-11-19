@@ -1,22 +1,37 @@
-/* camel-store.c : Abstract class for an email store
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Bertrand Guiheneuf <bertrand@helixcode.com>
- *          Dan Winship <danw@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
+ * SPDX-FileContributor: Dan Winship <danw@ximian.com>
  */
+
+/**
+ * CamelStore:
+ *
+ * Base class for mail storage backends.
+ *
+ * #CamelStore is the base class for backends that support storage and
+ * retrieval of mail messages. It is a #CamelService subclass that manages
+ * a connection and a collection of #CamelFolder objects.
+ *
+ * #CamelStore provides:
+ * - **Folder retrieval** — camel_store_get_folder() opens a named folder;
+ *   camel_store_get_inbox_folder() and camel_store_get_trash_folder() are
+ *   convenience wrappers for common system folders.
+ * - **Folder management** — creating, renaming, and deleting folders.
+ * - **Folder listing** — camel_store_get_folder_info() returns a tree of
+ *   #CamelFolderInfo describing the available folders.
+ * - **Subscriptions** — optional folder subscription management for backends
+ *   like IMAP that support it (via %CAMEL_STORE_SUBSCRIPTIONS flag and
+ *   the #CamelSubscribable interface).
+ *
+ * By default, stores set the %CAMEL_STORE_VTRASH and %CAMEL_STORE_VJUNK
+ * flags, which cause the base class to implement the trash and junk folders
+ * as virtual (#CamelVeeFolder) folders.
+ *
+ * The store emits signals when folders are opened, created, deleted, renamed,
+ * subscribed, or unsubscribed.
+ **/
 
 #include "evolution-data-server-config.h"
 
@@ -1374,6 +1389,52 @@ camel_store_can_refresh_folder (CamelStore *store,
 	g_return_val_if_fail (class->can_refresh_folder != NULL, FALSE);
 
 	return class->can_refresh_folder (store, info, error);
+}
+
+/**
+ * camel_store_search_multimailbox_sync:
+ * @store: a #CamelStore
+ * @folders: (element-type CamelFolder): array of folders to search
+ * @search_key: search key (e.g. BODY)
+ * @words: (element-type utf8): words/phrases to search
+ * @out_results: (out) (transfer container) (element-type utf8 GPtrArray): return location for
+ *   a %GHashTable mapping folder names (gchar*) to arrays of matching UID strings (#GPtrArray of
+ *   gchar*)
+ * @cancellable: a #GCancellable, or %NULL
+ * @error: return location for a #GError, or %NULL
+ *
+ * Runs search across multiple mailboxes in a single operation.
+ * Returns %G_IO_ERROR_NOT_SUPPORTED when the store does not support this operation.
+ *
+ * Returns: whether search succeeded
+ *
+ * Since: 3.62
+ **/
+gboolean
+camel_store_search_multimailbox_sync (CamelStore *store,
+                                      GPtrArray *folders,
+                                      const gchar *search_key,
+                                      const GPtrArray *words,
+                                      GHashTable **out_results,
+                                      GCancellable *cancellable,
+                                      GError **error)
+{
+	CamelStoreClass *class;
+
+	g_return_val_if_fail (CAMEL_IS_STORE (store), FALSE);
+	g_return_val_if_fail (folders != NULL, FALSE);
+	g_return_val_if_fail (out_results != NULL, FALSE);
+
+	class = CAMEL_STORE_GET_CLASS (store);
+	g_return_val_if_fail (class != NULL, FALSE);
+
+	if (class->search_multimailbox_sync == NULL) {
+		g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+			"Store does not support multimailbox search");
+		return FALSE;
+	}
+
+	return class->search_multimailbox_sync (store, folders, search_key, words, out_results, cancellable, error);
 }
 
 static void

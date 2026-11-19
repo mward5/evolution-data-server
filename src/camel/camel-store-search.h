@@ -1,6 +1,6 @@
 /*
  * SPDX-FileCopyrightText: (C) 2025 Red Hat (www.redhat.com)
- * SPDX-License-Identifier: LGPL-2.1-or-later
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #if !defined (__CAMEL_H_INSIDE__) && !defined (CAMEL_COMPILATION)
@@ -111,11 +111,6 @@ typedef struct _CamelStoreSearch CamelStoreSearch;
 typedef struct _CamelStoreSearchClass CamelStoreSearchClass;
 typedef struct _CamelStoreSearchPrivate CamelStoreSearchPrivate;
 
-/**
- * CamelStoreSearch:
- *
- * Since: 3.58
- **/
 struct _CamelStoreSearch {
 	/*< private >*/
 	GObject parent;

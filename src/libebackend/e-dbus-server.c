@@ -1,18 +1,5 @@
 /*
- * e-dbus-server.c
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 /**
@@ -457,13 +444,6 @@ e_dbus_server_class_init (EDBusServerClass *class)
 static void
 e_dbus_server_init (EDBusServer *server)
 {
-#if !GLIB_CHECK_VERSION(2, 58, 0)
-	/* Workaround glib bug https://bugzilla.gnome.org/show_bug.cgi?id=793727
-	   Do not place this into class_init(), otherwise it can trigger
-	   deadlock under _g_dbus_initialize () at gdbusprivate.c:1950 */
-	g_network_monitor_get_default ();
-#endif
-
 	server->priv = e_dbus_server_get_instance_private (server);
 	server->priv->main_loop = g_main_loop_new (NULL, FALSE);
 	server->priv->wait_for_client = FALSE;

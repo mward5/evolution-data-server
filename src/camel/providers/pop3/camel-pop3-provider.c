@@ -1,22 +1,8 @@
-/* camel-pop3-provider.c: pop3 provider registration code
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors :
- *   Dan Winship <danw@ximian.com>
- *   Michael Zucchi <notzed@ximian.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Dan Winship <danw@ximian.com>
+ * SPDX-FileContributor: Michael Zucchi <notzed@ximian.com>
  */
 
 #include "evolution-data-server-config.h"
@@ -29,19 +15,19 @@ static CamelProviderConfEntry pop3_conf_entries[] = {
 	{ CAMEL_PROVIDER_CONF_SECTION_START, "storage", NULL,
 	  N_("Message Storage") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "keep-on-server", NULL,
-	  N_("_Leave messages on server"), "1" },
+	  N_("_Leave messages on server") },
 	{ CAMEL_PROVIDER_CONF_CHECKSPIN, "delete-after-days", "keep-on-server",
 	  /* Translators: '%s' is replaced with a widget, where user can
 	   * select how many days can be message left on the server. */
-	  N_("_Delete after %s day(s)"), "0:1:7:365" },
+	  N_("_Delete after %s day(s)") },
 	{ CAMEL_PROVIDER_CONF_LABEL, "delete-after-days-hint", "keep-on-server",
 	  N_("Hint: Use 0 days to keep messages on the server indefinitely.") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "delete-expunged", "keep-on-server",
-	  N_("Delete _expunged from local Inbox"), "0" },
+	  N_("Delete _expunged from local Inbox") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "disable-extensions", NULL,
-	  N_("Disable _support for all POP3 extensions"), "0" },
+	  N_("Disable _support for all POP3 extensions") },
 	{ CAMEL_PROVIDER_CONF_CHECKBOX, "enable-utf8", "!disable-extensions",
-	  N_("Enable _UTF-8 extension, when the server supports it"), "1" },
+	  N_("Enable _UTF-8 extension, when the server supports it") },
 	{ CAMEL_PROVIDER_CONF_SECTION_END },
 	{ CAMEL_PROVIDER_CONF_END }
 };

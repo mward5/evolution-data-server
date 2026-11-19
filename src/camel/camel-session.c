@@ -1,23 +1,45 @@
-/* camel-session.c : Abstract class for an email session
- *
- * Copyright (C) 1999-2008 Novell, Inc. (www.novell.com)
- *
- * This library is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation.
- *
- * This library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors: Dan Winship <danw@ximian.com>
- *          Jeffrey Stedfast <fejj@ximian.com>
- *          Bertrand Guiheneuf <bertrand@helixcode.com>
+/*
+ * SPDX-FileCopyrightText: (C) 1999-2008 Novell, Inc. (www.novell.com)
+ * SPDX-License-Identifier: LGPL-2.0-or-later
+ * SPDX-FileContributor: Dan Winship <danw@ximian.com>
+ * SPDX-FileContributor: Jeffrey Stedfast <fejj@ximian.com>
+ * SPDX-FileContributor: Bertrand Guiheneuf <bertrand@helixcode.com>
  */
+
+/**
+ * CamelSession:
+ *
+ * Application context for a Camel mail session.
+ *
+ * #CamelSession is a partially abstract class that provides the application
+ * context for a Camel mail session. Client applications must subclass it and
+ * override various virtual methods before any #CamelProvider backends can
+ * function.
+ *
+ * A session provides:
+ *
+ * - **Service resolution** — camel_session_ref_service() looks up an
+ *   already-registered #CamelService by UID, while camel_session_add_service()
+ *   registers a new service (instantiating the correct #CamelStore or
+ *   #CamelTransport subclass based on the #CamelProvider).
+ *
+ * - **Online/offline state** — camel_session_get_online() and
+ *   camel_session_set_online() control whether backends should access remote
+ *   resources. Backends observe this and go offline accordingly.
+ *
+ * - **User interaction** — virtual methods for password prompts
+ *   (camel_session_get_password()) and alerts, which the client application
+ *   must implement to interact with the user.
+ *
+ * - **Filter driver access** — camel_session_get_filter_driver() returns a
+ *   configured #CamelFilterDriver for automatic message filtering.
+ *
+ * - **Thread management** — helpers for submitting jobs to a thread pool and
+ *   for running async operations.
+ *
+ * An application typically creates a single session instance and reuses it
+ * for the lifetime of the application.
+ **/
 
 #include "evolution-data-server-config.h"
 

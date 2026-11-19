@@ -12,6 +12,7 @@ By using the evolution-data-server, other GNOME applications are integrating wit
   * View Planner files as Evolution task lists.
 
 
+
 ===========================
 S/MIME TRIPLE-WRAP FORK
 ===========================
@@ -20,9 +21,10 @@ This branch (triple-wrap) is a personal, experimental fork. It is not
 affiliated with the upstream Evolution Data Server project; everything above
 this section is the original upstream README.
 
-Its only change to Camel is a Content-Description on the S/MIME signature part,
-in src/camel/camel-smime-context.c, matching what camel_gpg_context already
-sets on the signature part it builds.
+It is upstream 3.62.1 plus one change, GNOME/evolution-data-server!256
+("Camel: Combine the results of all signers of an S/MIME signature"),
+cherry-picked from master, where it is merged for 3.63.1. Everything else the
+3.60.2-based fork carried (!250, !257) is already in 3.62.1.
 
 The RFC 2634 S/MIME triple-wrapping itself needs no change to Camel and is
 implemented entirely in Evolution. See the triple-wrap branch of

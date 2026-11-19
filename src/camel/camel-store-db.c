@@ -1,6 +1,6 @@
 /*
  * SPDX-FileCopyrightText: (C) 2025 Red Hat (www.redhat.com)
- * SPDX-License-Identifier: LGPL-2.1-or-later
+ * SPDX-License-Identifier: LGPL-2.0-or-later
  */
 
 #include "evolution-data-server-config.h"
@@ -33,9 +33,9 @@
 #define get_num64(_cl) ((_cl) ? g_ascii_strtoll ((_cl), NULL, 10) : 0)
 
 /**
- * SECTION: camel-store-db
- * @include: camel/camel.h
- * @short_description: a #CamelStore database
+ * CamelStoreDB:
+ *
+ * A #CamelStore database.
  *
  * The #CamelStoreDB is a descendant of the #CamelDB, which takes care
  * of the save of the message information in an internal database.
