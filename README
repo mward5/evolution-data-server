@@ -11,3 +11,25 @@ By using the evolution-data-server, other GNOME applications are integrating wit
   * Synchronize your Pidgin buddies with your Evolution contacts.
   * View Planner files as Evolution task lists.
 
+
+
+===========================
+S/MIME TRIPLE-WRAP FORK
+===========================
+
+This branch (triple-wrap) is a personal, experimental fork. It is not
+affiliated with the upstream Evolution Data Server project; everything above
+this section is the original upstream README.
+
+It is upstream 3.62.1 plus one change, GNOME/evolution-data-server!256
+("Camel: Combine the results of all signers of an S/MIME signature"),
+cherry-picked from master, where it is merged for 3.63.1. Everything else the
+3.60.2-based fork carried (!250, !257) is already in 3.62.1.
+
+The RFC 2634 S/MIME triple-wrapping itself needs no change to Camel and is
+implemented entirely in Evolution. See the triple-wrap branch of
+
+    https://github.com/mward5/evolution
+
+for what it does, how to build it, which parts of RFC 2634 it does and does not
+implement, and the design.
